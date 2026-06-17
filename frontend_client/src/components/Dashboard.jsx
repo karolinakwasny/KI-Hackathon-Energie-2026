@@ -1,6 +1,7 @@
 // src/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
-import { fetchDashboardData } from './mockData';
+// import { fetchDashboardData } from './mockData';
+import { fetchDashboardData } from './api';
 import AnalyticsChart from './AnalyticsChart';
 import CombinedChart from './CombinedChart';
 
