@@ -15,16 +15,16 @@ import {
 export default function CombinedChart({ data, timeframe }) {
   return (
     <div style={{
-      border: '1px solid #e0e0e0',
+      border: '1px solid #dde3f0',
       padding: '20px',
-      borderRadius: '12px',
+      borderRadius: '0',
       backgroundColor: '#ffffff',
-      boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
+      boxShadow: '0 2px 12px rgba(13,36,97,0.07)',
       marginBottom: '25px',
       width: '100%',
       boxSizing: 'border-box'
     }}>
-      <h3 style={{ margin: '0 0 15px 0', color: '#1a1a1a' }}>Master System Overview</h3>
+      <h3 style={{ margin: '0 0 15px 0', color: '#0d2461', fontFamily: "'Segoe UI', Arial, sans-serif", fontWeight: '700' }}>Combined View</h3>
       
       <div style={{ height: '350px', width: '100%' }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -33,20 +33,20 @@ export default function CombinedChart({ data, timeframe }) {
             <XAxis dataKey="time" stroke="#888" tickLine={false} />
             
             {/* LEFT Y-AXIS (For monetary metrics) */}
-            <YAxis 
-              yAxisId="left" 
-              orientation="left" 
-              stroke="#6366f1" 
-              tickFormatter={(v) => `$${v}`} 
+            <YAxis
+              yAxisId="left"
+              orientation="left"
+              stroke="#0d2461"
+              tickFormatter={(v) => `€${v}`}
               tickLine={false}
             />
-            
+
             {/* RIGHT Y-AXIS (Specifically for energy load) */}
-            <YAxis 
-              yAxisId="right" 
-              orientation="right" 
-              stroke="#ef4444" 
-              tickFormatter={(v) => `${v}kW`} 
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              stroke="#1a9488"
+              tickFormatter={(v) => `${v}kW`}
               tickLine={false}
             />
             
@@ -57,14 +57,14 @@ export default function CombinedChart({ data, timeframe }) {
             <Legend verticalAlign="top" height={36} />
 
             {/* Area block for profits to create a nice visual baseline */}
-            <Area yAxisId="left" type="monotone" dataKey="profit" name="profit" fill="#f59e0b" stroke="#f59e0b" fillOpacity={0.15} strokeWidth={1.5} />
-            
+            <Area yAxisId="left" type="monotone" dataKey="profit" name="profit" fill="#16a34a" stroke="#16a34a" fillOpacity={0.15} strokeWidth={1.5} />
+
             {/* Main structural trends */}
-            <Line yAxisId="left" type="monotone" dataKey="price" name="price" stroke="#6366f1" strokeWidth={3} dot={false} />
-            <Line yAxisId="left" type="monotone" dataKey="cost" name="cost" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="4 4" />
-            
+            <Line yAxisId="left" type="monotone" dataKey="price" name="price" stroke="#0d2461" strokeWidth={3} dot={false} />
+            <Line yAxisId="left" type="monotone" dataKey="cost" name="cost" stroke="#2e6be6" strokeWidth={2} dot={false} strokeDasharray="4 4" />
+
             {/* Energy load pinned securely to the right axis */}
-            <Line yAxisId="right" type="monotone" dataKey="kw" name="kw" stroke="#ef4444" strokeWidth={2.5} dot={false} />
+            <Line yAxisId="right" type="monotone" dataKey="kw" name="kw" stroke="#1a9488" strokeWidth={2.5} dot={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

@@ -64,6 +64,6 @@
     }
   ],
   "warnings": [
-    "tz_localize fell back to ambiguous=True: 2024-10-27 02:00:00 is an ambiguous time and cannot be inferred."
+    "tz_localize fell back to ambiguous=True: 2024-10-27 02:00:00"
   ]
 }

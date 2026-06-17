@@ -1,6 +1,6 @@
 // src/api.js
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "http://localhost:8001";
 
 const TARIFF_2025 = {
   ne_energy_ct_kwh: 8.24,
