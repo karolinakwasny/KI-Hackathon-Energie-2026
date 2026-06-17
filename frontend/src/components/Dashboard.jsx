@@ -1,7 +1,8 @@
 // src/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { fetchDashboardData } from './mockData';
-import AnalyticsChart from './AnalyticsChart'; // 1. IMPORT THE NEW CHART
+import AnalyticsChart from './AnalyticsChart';
+import CombinedChart from './CombinedChart'; // 1. IMPORT THE COMBINED CHART
 
 export default function Dashboard() {
   const [data, setData] = useState([]);
@@ -28,7 +29,8 @@ export default function Dashboard() {
       boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
       flex: activeChart === 'all' ? '1 1 calc(50% - 20px)' : '1 1 100%',
       minWidth: '350px',
-      transition: 'all 0.3s ease'
+      transition: 'all 0.3s ease',
+      boxSizing: 'border-box'
     };
 
     return (
@@ -43,14 +45,8 @@ export default function Dashboard() {
           </button>
         </div>
         
-        {/* 2. REAL CHART REPLACES THE OLD PLACEHOLDER DIV */}
         <div style={{ height: '280px', width: '100%' }}>
-          <AnalyticsChart 
-            data={data} 
-            metricId={id} 
-            color={color} 
-            timeframe={timeframe} 
-          />
+          <AnalyticsChart data={data} metricId={id} color={color} timeframe={timeframe} />
         </div>
       </div>
     );
@@ -58,42 +54,36 @@ export default function Dashboard() {
 
   return (
     <div style={{ padding: '30px', fontFamily: 'system-ui, sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh' }}>
+      
+      {/* HEADER BAR */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
         <h1 style={{ margin: 0, color: '#1a1a1a', fontSize: '24px' }}>Energy Management Workspace</h1>
         
         {/* ZOOM CONTROLS */}
         <div style={{ background: '#fff', padding: '4px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: '1px solid #e0e0e0' }}>
-          <button 
-            onClick={() => setTimeframe('day')} 
-            style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: timeframe === 'day' ? '#0070f3' : 'transparent', color: timeframe === 'day' ? '#fff' : '#333', fontWeight: 'bold' }}
-          >
-            24 Hours
-          </button>
-          <button 
-            onClick={() => setTimeframe('month')} 
-            style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: timeframe === 'month' ? '#0070f3' : 'transparent', color: timeframe === 'month' ? '#fff' : '#333', fontWeight: 'bold' }}
-          >
-            Month
-          </button>
-          <button 
-            onClick={() => setTimeframe('year')} 
-            style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: timeframe === 'year' ? '#0070f3' : 'transparent', color: timeframe === 'year' ? '#fff' : '#333', fontWeight: 'bold' }}
-          >
-            Year
-          </button>
+          <button onClick={() => setTimeframe('day')} style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: timeframe === 'day' ? '#0070f3' : 'transparent', color: timeframe === 'day' ? '#fff' : '#333', fontWeight: 'bold' }}>24 Hours</button>
+          <button onClick={() => setTimeframe('month')} style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: timeframe === 'month' ? '#0070f3' : 'transparent', color: timeframe === 'month' ? '#fff' : '#333', fontWeight: 'bold' }}>Month</button>
+          <button onClick={() => setTimeframe('year')} style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: timeframe === 'year' ? '#0070f3' : 'transparent', color: timeframe === 'year' ? '#fff' : '#333', fontWeight: 'bold' }}>Year</button>
         </div>
       </div>
 
       {loading ? (
         <h3 style={{ color: '#666' }}>Loading live feeds...</h3>
       ) : (
-        /* CHARTS GRID */
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
-          {renderChartContainer('price', 'Customer Prices', '#6366f1')}
-          {renderChartContainer('cost', 'Production Cost', '#10b981')}
-          {renderChartContainer('profit', 'Net Profit Margin', '#f59e0b')}
-          {renderChartContainer('kw', 'Load Demand (kW)', '#ef4444')}
-        </div>
+        <>
+          {/* 2. RENDER MASTER CHART ONLY WHEN ALL CHARTS ARE VISIBLE */}
+          {activeChart === 'all' && (
+            <CombinedChart data={data} timeframe={timeframe} />
+          )}
+
+          {/* CHARTS GRID */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
+            {renderChartContainer('price', 'Customer Prices', '#6366f1')}
+            {renderChartContainer('cost', 'Production Cost', '#10b981')}
+            {renderChartContainer('profit', 'Net Profit Margin', '#f59e0b')}
+            {renderChartContainer('kw', 'Load Demand (kW)', '#ef4444')}
+          </div>
+        </>
       )}
     </div>
   );
