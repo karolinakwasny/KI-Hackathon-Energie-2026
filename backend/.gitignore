@@ -1,0 +1,7 @@
+# uv / virtual env
+.venv/
+__pycache__/
+*.pyc
+
+# generated EDA outputs
+eda_output/
