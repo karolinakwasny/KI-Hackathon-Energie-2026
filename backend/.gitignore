@@ -5,3 +5,6 @@ __pycache__/
 
 # generated EDA outputs
 eda_output/
+
+# local-only data brief (not for the repo)
+data_understanding.html
