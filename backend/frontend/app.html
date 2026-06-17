@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChargeSmart — Driver App</title>
+<style>
+  :root{--ink:#16202b;--muted:#5b6b7c;--line:#e6ebf1;--blue:#2b6cb0;--green:#2f855a;--red:#c53030;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);
+       background:linear-gradient(160deg,#2b6cb0,#1a365d);min-height:100vh;
+       display:flex;align-items:flex-start;justify-content:center;padding:24px}
+  .phone{width:380px;max-width:100%;background:#f6f8fb;border-radius:26px;overflow:hidden;
+         box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .top{background:#fff;padding:18px 20px;border-bottom:1px solid var(--line)}
+  .top h1{font-size:17px;margin:0}
+  .top .s{font-size:12px;color:var(--muted)}
+  .top a{font-size:12px;color:var(--blue);text-decoration:none;float:right}
+  .body{padding:18px 20px 28px}
+  label{font-size:13px;color:var(--muted)}
+  input{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit;margin:6px 0 12px}
+  button{width:100%;padding:12px;border:0;border-radius:12px;font:inherit;font-weight:600;cursor:pointer}
+  .primary{background:var(--blue);color:#fff}
+  .ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .offer{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:14px;display:none}
+  .offer.show{display:block}
+  .big{font-size:28px;font-weight:800;color:var(--green)}
+  .chips span{display:inline-block;background:#e6f4ec;color:var(--green);border-radius:20px;
+              padding:3px 10px;font-size:13px;font-weight:600;margin:3px 3px 0 0}
+  .row{display:flex;gap:10px;margin-top:14px}
+  .muted{color:var(--muted);font-size:12px}
+  .toast{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:13px;display:none}
+  .toast.show{display:block}
+  .ok{background:#e6f4ec;color:var(--green)} .no{background:#fbeaea;color:var(--red)}
+  .ex{font-size:12px;color:var(--blue);cursor:pointer}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="top">
+    <a href="dashboard.html">Operator →</a>
+    <h1>⚡ ChargeSmart</h1>
+    <div class="s">Charge cheaper. Help balance the grid.</div>
+  </div>
+  <div class="body">
+    <label>Your contract ID</label>
+    <input id="cid" placeholder="DE-LDK-C…" value="DE-LDK-C43313814-L">
+    <div class="muted">Try: <span class="ex" onclick="setCid('DE-LDK-C43313814-L')">DE-LDK-C43313814-L</span> ·
+      <span class="ex" onclick="setCid('DE-LDK-C09618204-1')">DE-LDK-C09618204-1</span></div>
+    <button class="primary" style="margin-top:12px" onclick="getOffer()">See today's offer</button>
+
+    <div class="offer" id="offer">
+      <div class="muted">Save by charging in the cheap window</div>
+      <div class="big" id="disc"></div>
+      <div class="muted">cheaper per kWh than your usual evening slot</div>
+      <div style="margin-top:12px"><div class="muted">Best hours today</div>
+        <div class="chips" id="hours"></div></div>
+      <div class="muted" id="est" style="margin-top:12px"></div>
+      <div class="row">
+        <button class="primary" onclick="respond(true)">Accept &amp; charge then</button>
+        <button class="ghost" onclick="respond(false)">Not today</button>
+      </div>
+      <div class="toast" id="toast"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let current = null;            // {contract_id, notification_id, ...}
+const setCid = v => { document.getElementById("cid").value = v; };
+
+async function getOffer(){
+  const cid = document.getElementById("cid").value.trim();
+  const offer = document.getElementById("offer");
+  const toast = document.getElementById("toast"); toast.className="toast";
+  try{
+    const r = await fetch(`${API}/users/${encodeURIComponent(cid)}/offer?year=2025`);
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    current = {contract_id:d.contract_id, notification_id:"app-"+Math.random().toString(36).slice(2,10),
+               shifted:d.expected_shift_kwh};
+    document.getElementById("disc").textContent = `${d.discount_ct_kwh} ct/kWh`;
+    document.getElementById("hours").innerHTML = d.cheap_hours.map(h=>`<span>${h}:00</span>`).join("");
+    document.getElementById("est").textContent =
+      `If you shift, you'd move ~${Number(d.expected_shift_kwh).toFixed(0)} kWh of charging into the cheap window.`;
+    offer.className = "offer show";
+  }catch(e){
+    offer.className="offer show";
+    document.getElementById("disc").textContent="—";
+    document.getElementById("est").textContent="Could not load offer ("+e.message+"). Is the API running?";
+  }
+}
+
+async function respond(accepted){
+  if(!current) return;
+  const toast = document.getElementById("toast");
+  const q = `notification_id=${current.notification_id}&accepted=${accepted}`+
+            `&shifted_kwh=${accepted?current.shifted:0}`;
+  try{
+    await fetch(`${API}/users/${encodeURIComponent(current.contract_id)}/response?${q}`, {method:"POST"});
+    toast.className = "toast show " + (accepted?"ok":"no");
+    toast.textContent = accepted
+      ? "✓ Booked! We'll remind you when the cheap window opens."
+      : "No problem — maybe next time.";
+  }catch(e){ toast.className="toast show no"; toast.textContent="Error logging response: "+e.message; }
+}
+</script>
+</body>
+</html>
