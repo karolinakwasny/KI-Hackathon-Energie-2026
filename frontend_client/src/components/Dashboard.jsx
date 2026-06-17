@@ -5,10 +5,30 @@ import { fetchDashboardData } from './api';
 import AnalyticsChart from './AnalyticsChart';
 import CombinedChart from './CombinedChart';
 
+const MONTHS = [
+  { value: 0, label: 'January' },
+  { value: 1, label: 'February' },
+  { value: 2, label: 'March' },
+  { value: 3, label: 'April' },
+  { value: 4, label: 'May' },
+  { value: 5, label: 'June' },
+  { value: 6, label: 'July' },
+  { value: 7, label: 'August' },
+  { value: 8, label: 'September' },
+  { value: 9, label: 'October' },
+  { value: 10, label: 'November' },
+  { value: 11, label: 'December' },
+];
+
+const DAYS = Array.from({ length: 31 }, (_, index) => index + 1);
+
 export default function Dashboard() {
   // 1. Split timeframes so the top and bottom can change independently
   const [overviewTimeframe, setOverviewTimeframe] = useState('day');
   const [detailTimeframe, setDetailTimeframe] = useState('day');
+  const [selectedYear] = useState(2025);
+  const [selectedMonth, setSelectedMonth] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(1);
   
   const [overviewData, setOverviewData] = useState([]);
   const [detailData, setDetailData] = useState([]);
@@ -20,20 +40,28 @@ export default function Dashboard() {
   // Fetch data for the Master Overview Chart at the top
   useEffect(() => {
     setLoadingOverview(true);
-    fetchDashboardData(overviewTimeframe).then((result) => {
+    fetchDashboardData(overviewTimeframe, {
+      selectedYear,
+      selectedMonth,
+      selectedDay,
+    }).then((result) => {
       setOverviewData(result);
       setLoadingOverview(false);
     });
-  }, [overviewTimeframe]);
+  }, [overviewTimeframe, selectedYear, selectedMonth, selectedDay]);
 
   // Fetch data for the Split / Expanded Charts at the bottom
   useEffect(() => {
     setLoadingDetail(true);
-    fetchDashboardData(detailTimeframe).then((result) => {
+    fetchDashboardData(detailTimeframe, {
+      selectedYear,
+      selectedMonth,
+      selectedDay,
+    }).then((result) => {
       setDetailData(result);
       setLoadingDetail(false);
     });
-  }, [detailTimeframe]);
+  }, [detailTimeframe, selectedYear, selectedMonth, selectedDay]);
 
   // Helper component for the timeframe buttons to keep layout clean
   const TimeframeSelector = ({ current, onChange }) => (
@@ -107,6 +135,31 @@ export default function Dashboard() {
     <div style={{ padding: '30px', fontFamily: 'system-ui, sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh' }}>
       
       <h1 style={{ margin: '0 0 30px 0', color: '#1a1a1a', fontSize: '26px' }}>Performance Analytics Workspace</h1>
+
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '24px', padding: '16px', background: '#ffffff', borderRadius: '12px', border: '1px solid #e0e0e0' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '6px' }}>Year</label>
+          <select value={selectedYear} disabled style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #ccc', background: '#f8f8f8' }}>
+            <option value={2025}>2025</option>
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', color: '#6b6d7f', marginBottom: '6px' }}>Month</label>
+          <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff' }}>
+            {MONTHS.map((month) => (
+              <option key={month.value} value={month.value}>{month.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '6px' }}>Day</label>
+          <select value={selectedDay} onChange={(e) => setSelectedDay(Number(e.target.value))} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff' }}>
+            {DAYS.map((day) => (
+              <option key={day} value={day}>{day}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* ================= MASTER OVERVIEW SECTION ================= */}
       <div style={{ marginBottom: '35px' }}>
