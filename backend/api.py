@@ -181,12 +181,13 @@ def timeseries(year: int = Query(2025), freq: str = Query("D", description="pand
     except ValueError as e:
         raise HTTPException(400, f"Invalid freq '{freq}': {e}")
     g["ts"] = g["ts"].astype(str)
+    records = g.round(3).astype(object).where(pd.notna(g), None).to_dict("records")
     return {
         "year": year,
         "freq": freq,
         "period": {"start": str(m_year["ts"].min()), "end": str(m_year["ts"].max())},
         "session_overlap_window": {"start": str(start), "end": str(end)},
-        "points": g.round(3).to_dict("records"),
+        "points": records,
     }
 
 

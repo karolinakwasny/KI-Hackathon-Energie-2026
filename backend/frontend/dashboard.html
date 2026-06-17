@@ -54,6 +54,11 @@
 <div class="wrap">
   <div class="cards" id="cards"></div>
 
+  <div class="panel">
+    <h2>Data coverage</h2>
+    <div id="coverage" class="muted"></div>
+  </div>
+
   <div class="grid2">
     <div class="panel">
       <h2>Annual cost stack</h2>
@@ -99,19 +104,30 @@ async function get(path){ const r = await fetch(API+path); if(!r.ok) throw new E
 async function loadAll(){
   const year = yearSel.value;
   try{
-    const [k, tou] = await Promise.all([get(`/kpis?year=${year}`), get(`/strategy/tou?year=${year}`)]);
-    renderCards(k); renderCost(k); renderTou(tou);
+    const [k, summary, tou] = await Promise.all([
+      get(`/kpis?year=${year}`),
+      get(`/sessions/summary?year=${year}`),
+      get(`/strategy/tou?year=${year}`)
+    ]);
+    renderCards(k, summary); renderCoverage(k, summary); renderCost(k); renderTou(tou);
     const ts = await get(`/timeseries?year=${year}&freq=D`); renderTs(ts);
     const hr = await get(`/load-profile/hourly?year=${year}`); renderHour(hr);
   }catch(e){ document.getElementById("cards").innerHTML =
       `<div class="card"><div class="l" style="color:var(--red)">API error: ${e.message}. Is the server running?</div></div>`; }
 }
 
-function renderCards(k){
+function fmtDateTime(v){
+  if(!v) return "-";
+  return String(v).replace("T"," ").replace(/([+-]\d\d:\d\d)$/," $1");
+}
+
+function renderCards(k, summary){
   const p30 = k.profit.find(p=>p.margin===0.3) || k.profit[0];
+  const sold = summary?.kwh ?? k.sold_kwh;
   const cards = [
     ["Grid bought", num(k.grid_kwh)+" kWh"],
-    ["Sold", num(k.sold_kwh)+" kWh"],
+    ["Sold", num(sold)+" kWh"],
+    ["Sessions", num(summary?.sessions || 0)],
     ["Loss / standby", k.loss_pct+" %"],
     ["Peak power", k.peak_kw+" kW"],
     ["Total cost", eur(k.cost_eur.total)],
@@ -120,6 +136,19 @@ function renderCards(k){
   ];
   document.getElementById("cards").innerHTML = cards.map(([l,v])=>
     `<div class="card"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+}
+
+function renderCoverage(k, summary){
+  const window = summary?.session_overlap_window || k.session_overlap_window || {};
+  const master = k.period || {};
+  const excluded = summary?.excluded_outside_master_window || {sessions:0,kwh:0};
+  document.getElementById("coverage").innerHTML =
+    `<table>
+      <tr><td>Master/load period</td><td class="n">${fmtDateTime(master.start)} to ${fmtDateTime(master.end)}</td></tr>
+      <tr><td>Session usage counted</td><td class="n">${fmtDateTime(window.start)} to ${fmtDateTime(window.end)}</td></tr>
+      <tr><td>Sessions counted</td><td class="n">${num(summary?.sessions || 0)}</td></tr>
+      <tr><td>Excluded outside master window</td><td class="n">${num(excluded.sessions)} sessions / ${num(excluded.kwh)} kWh</td></tr>
+    </table>`;
 }
 
 function renderCost(k){
