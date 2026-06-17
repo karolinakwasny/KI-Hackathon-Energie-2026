@@ -4,12 +4,17 @@
 Backend API (skeleton) for the charging-hub dashboard + nudge loop.
 
 Serves the cleaned tables in data/clean/ as JSON for:
-  * the CLIENT dashboard (operator): KPIs, time series, load pattern, strategy
-  * the USER app: personalised offer + response  (STUBBED here; wired in next pass)
+  * the CLIENT dashboard (operator): KPIs, time series, load pattern, strategy, campaign
+  * the USER app: personalised offer + response logging
+
+Also serves a sample frontend (operator dashboard + driver app) at /ui.
 
 Run:
     uv run uvicorn api:app --reload --port 8000
-Docs (interactive):  http://localhost:8000/docs
+Then open:
+    http://localhost:8000/             -> operator dashboard
+    http://localhost:8000/ui/app.html  -> driver app
+    http://localhost:8000/docs         -> interactive API docs
 
 Reads data/clean/master_15min.csv + sessions.csv. Run clean_data.py first.
 """
@@ -20,9 +25,12 @@ from pathlib import Path
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 BASE = Path(__file__).resolve().parent
 CLEAN = (BASE / "data" / "clean") if (BASE / "data" / "clean").is_dir() else (BASE / "clean")
+FRONTEND = BASE / "frontend"
 
 # Tariff / cost assumptions (mirror CLAUDE.md / Charging_hub_analysis CONFIG).
 TARIFF = {
@@ -40,6 +48,16 @@ app = FastAPI(title="Charging-Hub Backend", version="0.1.0",
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
+
+# Sample frontend (operator dashboard + driver app) served at /ui.
+if FRONTEND.is_dir():
+    app.mount("/ui", StaticFiles(directory=FRONTEND, html=True), name="ui")
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse("/ui/dashboard.html")
+
 
 _cache: dict = {}
 
@@ -65,6 +83,15 @@ def _year(df: pd.DataFrame, year: int | None) -> pd.DataFrame:
     return df if year is None else df[df["year"] == year]
 
 
+def _master_session_window(m: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Half-open session window covered by the 15-min master grid."""
+    return m["ts"].min(), m["ts"].max() + pd.Timedelta(minutes=15)
+
+
+def _sessions_in_window(s: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    return s[(s["start_ts"] >= start) & (s["start_ts"] < end)]
+
+
 # --------------------------------------------------------------------------- #
 @app.get("/health")
 def health():
@@ -75,9 +102,11 @@ def health():
 def meta():
     """Years available + period covered, so the frontend can populate filters."""
     m = master()
+    start, end = _master_session_window(m)
     return {
         "years": sorted(int(y) for y in m["year"].unique()),
         "period": {"start": str(m["ts"].min()), "end": str(m["ts"].max())},
+        "session_overlap_window": {"start": str(start), "end": str(end)},
         "intervals": int(len(m)),
         "tariff": TARIFF,
     }
@@ -87,9 +116,10 @@ def meta():
 def kpis(year: int = Query(2025)):
     """Headline numbers for the dashboard cards: energy, cost stack, peak, profit."""
     m = _year(master(), year)
-    s = _year(sessions(), year)
     if m.empty:
         raise HTTPException(404, f"No data for year {year}.")
+    start, end = _master_session_window(m)
+    s = _sessions_in_window(_year(sessions(), year), start, end)
 
     grid_kwh = float(m["grid_kwh"].sum())
     sold_kwh = float(s["kwh"].sum())
@@ -115,6 +145,8 @@ def kpis(year: int = Query(2025)):
 
     return {
         "year": year,
+        "period": {"start": str(m["ts"].min()), "end": str(m["ts"].max())},
+        "session_overlap_window": {"start": str(start), "end": str(end)},
         "grid_kwh": round(grid_kwh, 1),
         "sold_kwh": round(sold_kwh, 1),
         "loss_pct": round((grid_kwh - sold_kwh) / grid_kwh * 100, 2) if grid_kwh else 0,
@@ -134,9 +166,11 @@ def kpis(year: int = Query(2025)):
 @app.get("/timeseries")
 def timeseries(year: int = Query(2025), freq: str = Query("D", description="pandas resample, e.g. H, D, W, M")):
     """Resampled buy/sell/price series for the dashboard charts."""
-    m = _year(master(), year).set_index("ts")
+    m_year = _year(master(), year)
+    m = m_year.set_index("ts")
     if m.empty:
         raise HTTPException(404, f"No data for year {year}.")
+    start, end = _master_session_window(m_year)
     # tolerate legacy pandas offset aliases (pandas>=2.2 renamed M->ME etc.)
     freq = {"M": "ME", "Q": "QE", "Y": "YE", "A": "YE", "H": "h"}.get(freq, freq)
     try:
@@ -147,7 +181,13 @@ def timeseries(year: int = Query(2025), freq: str = Query("D", description="pand
     except ValueError as e:
         raise HTTPException(400, f"Invalid freq '{freq}': {e}")
     g["ts"] = g["ts"].astype(str)
-    return {"year": year, "freq": freq, "points": g.round(3).to_dict("records")}
+    return {
+        "year": year,
+        "freq": freq,
+        "period": {"start": str(m_year["ts"].min()), "end": str(m_year["ts"].max())},
+        "session_overlap_window": {"start": str(start), "end": str(end)},
+        "points": g.round(3).to_dict("records"),
+    }
 
 
 @app.get("/load-profile/hourly")
@@ -167,13 +207,25 @@ def hourly(year: int = Query(2025)):
 @app.get("/sessions/summary")
 def sessions_summary(year: int = Query(2025)):
     """Audience sizing for the notification agent."""
-    s = _year(sessions(), year)
+    m = _year(master(), year)
+    s_all = _year(sessions(), year)
+    if m.empty:
+        raise HTTPException(404, f"No master data for year {year}.")
+    start, end = _master_session_window(m)
+    s = _sessions_in_window(s_all, start, end)
     if s.empty:
-        raise HTTPException(404, f"No data for year {year}.")
+        raise HTTPException(404, f"No sessions in master window for year {year}.")
+    excluded = s_all[~s_all.index.isin(s.index)]
     return {
         "year": year,
+        "period": {"start": str(s_all["start_ts"].min()), "end": str(s_all["start_ts"].max())},
+        "session_overlap_window": {"start": str(start), "end": str(end)},
         "sessions": int(len(s)),
         "kwh": round(float(s["kwh"].sum()), 1),
+        "excluded_outside_master_window": {
+            "sessions": int(len(excluded)),
+            "kwh": round(float(excluded["kwh"].sum()), 1),
+        },
         "roaming": {"sessions": int(s["is_roaming"].sum()),
                     "kwh": round(float(s.loc[s["is_roaming"], "kwh"].sum()), 1)},
         "notifiable": {"sessions": int(s["notifiable"].sum()),
