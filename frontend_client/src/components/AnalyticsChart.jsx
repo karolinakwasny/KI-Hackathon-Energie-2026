@@ -29,8 +29,8 @@ export default function AnalyticsChart({ data, metricId, color, timeframe }) {
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="time" stroke="#888" tickLine={false} />
-          <YAxis tickFormatter={formatYAxis} stroke="#888" tickLine={false} />
+          <XAxis dataKey="time" stroke="#888" tickLine={false} width={50}/>
+          <YAxis tickFormatter={formatYAxis} stroke="#888" tickLine={false} width={60}/>
           <Tooltip formatter={(value) => [formatYAxis(value), metricId.toUpperCase()]} />
           <Bar dataKey={metricId} fill={color} radius={[4, 4, 0, 0]} />
         </BarChart>
@@ -50,8 +50,8 @@ export default function AnalyticsChart({ data, metricId, color, timeframe }) {
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="time" stroke="#888" tickLine={false} />
-          <YAxis tickFormatter={formatYAxis} stroke="#888" tickLine={false} />
+          <XAxis dataKey="time" stroke="#888" tickLine={false} width={50}/>
+          <YAxis tickFormatter={formatYAxis} stroke="#888" tickLine={false} width={60}/>
           <Tooltip formatter={(value) => [formatYAxis(value), metricId.toUpperCase()]} />
           <Area type="monotone" dataKey={metricId} stroke={color} strokeWidth={2} fillOpacity={1} fill={`url(#gradient-${metricId})`} />
         </AreaChart>
@@ -64,8 +64,8 @@ export default function AnalyticsChart({ data, metricId, color, timeframe }) {
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="time" stroke="#888" tickLine={false} />
-        <YAxis tickFormatter={formatYAxis} stroke="#888" tickLine={false} />
+        <XAxis dataKey="time" stroke="#888" tickLine={false} width={50}/>
+        <YAxis tickFormatter={formatYAxis} stroke="#888" tickLine={false} width={60}/>
         <Tooltip formatter={(value) => [formatYAxis(value), metricId.toUpperCase()]} />
         <Line type="monotone" dataKey={metricId} stroke={color} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 6 }} />
       </LineChart>
