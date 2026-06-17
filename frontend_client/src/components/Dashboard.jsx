@@ -5,31 +5,17 @@ import { fetchDashboardData } from './api';
 import AnalyticsChart from './AnalyticsChart';
 import CombinedChart from './CombinedChart';
 
-const MONTHS = [
-  { value: 0, label: 'January' },
-  { value: 1, label: 'February' },
-  { value: 2, label: 'March' },
-  { value: 3, label: 'April' },
-  { value: 4, label: 'May' },
-  { value: 5, label: 'June' },
-  { value: 6, label: 'July' },
-  { value: 7, label: 'August' },
-  { value: 8, label: 'September' },
-  { value: 9, label: 'October' },
-  { value: 10, label: 'November' },
-  { value: 11, label: 'December' },
-];
-
-const DAYS = Array.from({ length: 31 }, (_, index) => index + 1);
-
 export default function Dashboard() {
   // 1. Split timeframes so the top and bottom can change independently
   const [overviewTimeframe, setOverviewTimeframe] = useState('day');
   const [detailTimeframe, setDetailTimeframe] = useState('day');
   const [selectedYear] = useState(2025);
-  const [selectedMonth, setSelectedMonth] = useState(0);
-  const [selectedDay, setSelectedDay] = useState(1);
+  const [selectedDate, setSelectedDate] = useState('2025-01-01');
   
+  const selectedDateParts = selectedDate.split('-');
+  const selectedMonth = Number(selectedDateParts[1]) - 1;
+  const selectedDay = Number(selectedDateParts[2]);
+
   const [overviewData, setOverviewData] = useState([]);
   const [detailData, setDetailData] = useState([]);
   
@@ -138,26 +124,18 @@ export default function Dashboard() {
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '24px', padding: '16px', background: '#ffffff', borderRadius: '12px', border: '1px solid #e0e0e0' }}>
         <div>
-          <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '6px' }}>Year</label>
-          <select value={selectedYear} disabled style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #ccc', background: '#f8f8f8' }}>
-            <option value={2025}>2025</option>
-          </select>
+          <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '6px' }}>Pick a date in 2025</label>
+          <input
+            type="date"
+            min="2025-01-01"
+            max="2025-12-31"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff' }}
+          />
         </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '12px', color: '#6b6d7f', marginBottom: '6px' }}>Month</label>
-          <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff' }}>
-            {MONTHS.map((month) => (
-              <option key={month.value} value={month.value}>{month.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '6px' }}>Day</label>
-          <select value={selectedDay} onChange={(e) => setSelectedDay(Number(e.target.value))} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff' }}>
-            {DAYS.map((day) => (
-              <option key={day} value={day}>{day}</option>
-            ))}
-          </select>
+        <div style={{ color: '#666', fontSize: '13px' }}>
+          Showing hourly data for {selectedDate}
         </div>
       </div>
 
