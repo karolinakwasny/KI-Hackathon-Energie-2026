@@ -1,0 +1,1 @@
+# KI-Hackathon-Energie-2026
