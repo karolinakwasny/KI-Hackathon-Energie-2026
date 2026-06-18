@@ -1,0 +1,8 @@
+frontend_client/node_modules/
+frontend_client/dist/
+.env
+.env.local
+frontend_client/.env
+frontend_client/.env.local
+.DS_Storenode_modules/
+node_modules/
