@@ -430,6 +430,9 @@ def user_offer(contract_id: str, year: int = Query(2025)):
         expensive_avg_spot_ct_kwh=bands["expensive_avg_ct_kwh"],
         discount_ct_kwh=offer.discount_ct_kwh,
         margin_rate=segment["margin_rate"],
+        hourly_spot_ct_kwh=strategy.hourly_spot_profile(year),
+        cheap_hours=bands["cheap_hours"],
+        expensive_hours=bands["expensive_hours"],
     )
     return out
 
@@ -437,7 +440,8 @@ def user_offer(contract_id: str, year: int = Query(2025)):
 @app.post("/users/{contract_id}/response")
 def user_response(contract_id: str, notification_id: str = Query(...),
                   accepted: bool = Query(...), shifted_kwh: float = Query(0.0),
-                  reason: str | None = Query(None)):
+                  reason: str | None = Query(None),
+                  selected_hour: int | None = Query(None)):
     """Log a real user response into RESPONSES_LOG (feeds the MEASURE step)."""
     import config
     from models import ResponseRecord
@@ -446,4 +450,4 @@ def user_response(contract_id: str, notification_id: str = Query(...),
                          responded_ts=_now_iso(), accepted=accepted,
                          shifted_kwh=shifted_kwh)
     _append_csv(config.RESPONSES_LOG, ResponseRecord.COLUMNS, [rec.to_dict()])
-    return {"logged": True, "reason": reason, **rec.to_dict()}
+    return {"logged": True, "reason": reason, "selected_hour": selected_hour, **rec.to_dict()}

@@ -33,6 +33,27 @@
   .hour-card .h{font-weight:800;color:var(--ink)}
   .hour-card .p{font-size:13px;color:var(--green);font-weight:800;margin-top:4px}
   .hour-card .c{font-size:11px;color:var(--muted);margin-top:2px}
+  .slot-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+  .slot{border:1px solid var(--line);border-radius:10px;background:#fff;padding:7px 5px;min-height:58px;text-align:left;cursor:pointer}
+  .slot .t{font-size:11px;font-weight:800}
+  .slot .v{font-size:11px;color:var(--ink);font-weight:700;margin-top:3px}
+  .slot .m{font-size:9px;color:var(--muted);margin-top:2px;min-height:11px}
+  .slot.cheap{border-color:#9bd8b5;background:#eaf8f0}
+  .slot.expensive{border-color:#f0b4b4;background:#fff1f1}
+  .slot.best{box-shadow:0 0 0 2px #2f855a inset}
+  .slot.peak{box-shadow:0 0 0 2px #c53030 inset}
+  .slot.selected{box-shadow:0 0 0 3px var(--blue) inset;border-color:var(--blue)}
+  .price-chart{height:126px;margin-top:10px;padding:10px 8px 6px;border:1px solid var(--line);border-radius:12px;background:#f8fafc;display:flex;align-items:flex-end;gap:3px}
+  .bar-wrap{height:100%;flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;cursor:pointer}
+  .bar{width:100%;min-height:5px;border-radius:6px 6px 2px 2px;background:#9fc5eb}
+  .bar.cheap{background:#74c69d}
+  .bar.expensive{background:#f2a0a0}
+  .bar.best{background:#2f855a}
+  .bar.peak{background:#c53030}
+  .bar.selected{outline:2px solid var(--blue);outline-offset:1px}
+  .bar-label{font-size:8px;color:var(--muted);height:9px}
+  .selected-slot{margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:12px}
+  .selected-slot strong{font-size:14px;color:var(--green)}
   .row{display:flex;gap:10px;margin-top:14px}
   .reason-box{display:none;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#f8fafc}
   .reason-box.show{display:block}
@@ -75,6 +96,12 @@
       <div style="margin-top:12px"><div class="muted">Best hours today</div>
         <div class="chips" id="hours"></div></div>
       <div class="hour-cards" id="hourCards"></div>
+      <div style="margin-top:12px">
+        <div class="muted">24-hour charging price map</div>
+        <div class="price-chart" id="priceChart"></div>
+        <div class="slot-grid" id="slotGrid"></div>
+      </div>
+      <div class="selected-slot" id="selectedSlot"></div>
       <div class="muted" id="est" style="margin-top:12px"></div>
       <div id="priceBreakdown"></div>
       <div class="row">
@@ -97,6 +124,7 @@
 <script>
 const API = "";
 let current = null;            // {contract_id, notification_id, ...}
+let selectedSlot = null;
 const params = new URLSearchParams(window.location.search);
 const setCid = v => { document.getElementById("cid").value = v; };
 const isLiveSession = params.get("v") === "live" || params.has("notification_id");
@@ -166,12 +194,77 @@ function renderPriceBreakdown(pricing){
 }
 
 function renderHourCards(hours, pricing){
-  document.getElementById("hourCards").innerHTML = hours.map(h => `<div class="hour-card">
-    <div class="h">${h}:00</div>
-    <div class="p">${moneyCt(pricing.offer_price_ct_kwh)}</div>
+  const byHour = Object.fromEntries((pricing.slots || []).map(s => [s.hour, s]));
+  document.getElementById("hourCards").innerHTML = hours.map(h => {
+    const slot = byHour[h] || pricing;
+    return `<div class="hour-card">
+    <div class="h">${String(h).padStart(2, "0")}:00</div>
+    <div class="p">${moneyCt(slot.price_ct_kwh || pricing.offer_price_ct_kwh)}</div>
     <div class="c">usual evening ~${moneyCt(pricing.usual_evening_price_ct_kwh)}</div>
-    <div class="c">save ~${moneyCt(pricing.savings_vs_evening_ct_kwh)}</div>
-  </div>`).join("");
+    <div class="c">save ~${moneyCt(slot.savings_vs_evening_ct_kwh || pricing.savings_vs_evening_ct_kwh)}</div>
+  </div>`;
+  }).join("");
+}
+
+function slotClasses(s){
+  const classes = [];
+  if(s.is_cheap) classes.push("cheap");
+  if(s.is_expensive) classes.push("expensive");
+  if(s.is_best) classes.push("best");
+  if(s.is_peak) classes.push("peak");
+  if(selectedSlot && selectedSlot.hour === s.hour) classes.push("selected");
+  return classes.join(" ");
+}
+
+function selectSlot(hour){
+  const slots = current?.pricing?.slots || [];
+  selectedSlot = slots.find(s => Number(s.hour) === Number(hour)) || selectedSlot;
+  if(!selectedSlot) return;
+  renderSlots(current.pricing);
+  renderPriceChart(current.pricing);
+  renderSelectedSlot();
+}
+
+function renderSelectedSlot(){
+  const box = document.getElementById("selectedSlot");
+  if(!selectedSlot){
+    box.innerHTML = "Select a charging slot.";
+    return;
+  }
+  box.innerHTML = `Selected slot <strong>${selectedSlot.label}</strong><br>
+    ${moneyCt(selectedSlot.price_ct_kwh)} for this slot
+    ${selectedSlot.savings_vs_evening_ct_kwh > 0 ? ` · save ${moneyCt(selectedSlot.savings_vs_evening_ct_kwh)}` : ""}`;
+  document.getElementById("acceptOfferBtn").textContent = `Accept ${String(selectedSlot.hour).padStart(2, "0")}:00 slot`;
+}
+
+function renderPriceChart(pricing){
+  const slots = pricing.slots || [];
+  const prices = slots.map(s => Number(s.price_ct_kwh || 0));
+  const max = Math.max(...prices, 1);
+  const min = Math.min(...prices, 0);
+  document.getElementById("priceChart").innerHTML = slots.map(s => {
+    const price = Number(s.price_ct_kwh || 0);
+    const height = 18 + ((price - min) / Math.max(max - min, 1)) * 78;
+    const cls = slotClasses(s);
+    const label = [0,6,12,18,23].includes(Number(s.hour)) ? String(s.hour).padStart(2, "0") : "";
+    return `<div class="bar-wrap" data-chart-hour="${Number(s.hour)}" onclick="selectSlot(${Number(s.hour)})" title="${s.label}: ${moneyCt(price)}">
+      <div class="bar ${cls}" style="height:${height}%"></div>
+      <div class="bar-label">${label}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderSlots(pricing){
+  const slots = pricing.slots || [];
+  document.getElementById("slotGrid").innerHTML = slots.map(s => {
+    const classes = ["slot", slotClasses(s)].filter(Boolean);
+    const marker = s.is_best ? "Best" : (s.is_peak ? "Peak" : (s.is_cheap ? "Save" : ""));
+    return `<div class="${classes.join(" ")}" data-slot-hour="${Number(s.hour)}" role="button" tabindex="0" onclick="selectSlot(${Number(s.hour)})">
+      <div class="t">${String(s.hour).padStart(2, "0")}:00</div>
+      <div class="v">${Number(s.price_ct_kwh).toFixed(1)}</div>
+      <div class="m">${marker}</div>
+    </div>`;
+  }).join("");
 }
 
 async function getOffer(){
@@ -185,7 +278,9 @@ async function getOffer(){
     unlockResponse();
     current = {contract_id:d.contract_id,
                notification_id:params.get("notification_id") || "app-"+Math.random().toString(36).slice(2,10),
-               shifted:d.expected_shift_kwh};
+               shifted:d.expected_shift_kwh,
+               pricing:d.pricing};
+    selectedSlot = (d.pricing.slots || []).find(s => s.is_best) || (d.pricing.slots || [])[0] || null;
     document.getElementById("disc").textContent = `${d.discount_ct_kwh} ct/kWh`;
     document.getElementById("validDate").textContent = d.valid_date ? `Offer date: ${prettyDate(d.valid_date)}` : "";
     document.getElementById("hours").innerHTML = d.cheap_hours.map(h=>`<span>${h}:00</span>`).join("");
@@ -193,6 +288,9 @@ async function getOffer(){
       `If you shift, you'd move ~${Number(d.expected_shift_kwh).toFixed(0)} kWh of charging into the cheap window.`;
     renderPriceBreakdown(d.pricing);
     renderHourCards(d.cheap_hours, d.pricing);
+    renderPriceChart(d.pricing);
+    renderSlots(d.pricing);
+    renderSelectedSlot();
     offer.className = "offer show";
     const saved = localStorage.getItem(responseKey(current.notification_id));
     if(saved) lockResponse(saved);
@@ -207,9 +305,10 @@ async function respond(accepted, reason=""){
   if(!current) return;
   if(localStorage.getItem(responseKey(current.notification_id))) return;
   const toast = document.getElementById("toast");
-  const q = `notification_id=${current.notification_id}&accepted=${accepted}`+
-            `&shifted_kwh=${accepted?current.shifted:0}`+
-            `&reason=${encodeURIComponent(reason)}`;
+  let q = `notification_id=${current.notification_id}&accepted=${accepted}`+
+          `&shifted_kwh=${accepted?current.shifted:0}`+
+          `&reason=${encodeURIComponent(reason)}`;
+  if(selectedSlot) q += `&selected_hour=${encodeURIComponent(selectedSlot.hour)}`;
   try{
     await fetch(`${API}/users/${encodeURIComponent(current.contract_id)}/response?${q}`, {method:"POST"});
     const choice = accepted ? "accepted" : `declined:${reason || "other"}`;
@@ -230,6 +329,7 @@ document.getElementById("reasonTimeBtn").addEventListener("click", () => respond
 document.getElementById("reasonOtherBtn").addEventListener("click", () => respond(false, "other"));
 window.respond = respond;
 window.showDeclineReasons = showDeclineReasons;
+window.selectSlot = selectSlot;
 if(contractFromUrl){
   setCid(contractFromUrl);
   getOffer();

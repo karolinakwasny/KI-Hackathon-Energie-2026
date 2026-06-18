@@ -50,6 +50,17 @@ def tou_bands(year: int = DEFAULT_YEAR, n: int = 4) -> dict:
     }
 
 
+def hourly_spot_profile(year: int = DEFAULT_YEAR) -> dict[int, float]:
+    """Mean spot price by hour of day for the selected year."""
+    m = filter_year(load_master(), year)
+    if m.empty:
+        raise ValueError(f"No data for year {year}.")
+    return {
+        int(hour): round(float(value), 2)
+        for hour, value in m.groupby("hour")["spot_ct_kwh"].mean().items()
+    }
+
+
 def customer_segment(contract_id: str, year: int = DEFAULT_YEAR) -> dict:
     """Classify customer loyalty from session frequency.
 

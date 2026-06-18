@@ -173,9 +173,28 @@ frontend does not need to duplicate tariff, VAT, or margin logic:
   "savings_vs_evening_ct_kwh": 13.58,
   "cheap_avg_spot_ct_kwh": 5.14,
   "expensive_avg_spot_ct_kwh": 12.66,
-  "vat_rate": 0.19
+  "vat_rate": 0.19,
+  "slots": [
+    {
+      "hour": 13,
+      "label": "13:00-14:00",
+      "spot_ct_kwh": 4.74,
+      "price_ct_kwh": 22.84,
+      "standard_price_ct_kwh": 24.34,
+      "discount_ct_kwh": 1.50,
+      "savings_vs_evening_ct_kwh": 14.21,
+      "is_cheap": true,
+      "is_expensive": false,
+      "is_best": true,
+      "is_peak": false
+    }
+  ]
 }
 ```
+
+`pricing.slots` contains the full 24-hour customer price map. The app can render
+all hours and highlight `is_best`, `is_peak`, and `is_cheap` without recalculating
+anything in the browser.
 
 Segment logic:
 
