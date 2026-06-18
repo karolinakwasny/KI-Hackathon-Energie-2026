@@ -2,28 +2,26 @@ import { useEffect, useState } from "react";
 import PriceChart from "./PriceChart";
 import PriceList from "./PriceList";
 import StationManager from "./StationManager";
+import ProfileManager from "./ProfileManager";
 
-import freeImg from "../assets/electric_car.png";
 import takenImg from "../assets/car_red.png";
+import freeImg from "../assets/electric_car.png";
+import takenImgPair from "../assets/car_red_mirror.png";
 import freeImgPair from "../assets/electric_car_mirror.png";
-import takenImgPair from "../assets/electric_car_mirror.png";
 
 const BASE_URL = "http://localhost:8000";
-
-function formatPriceCtToEur(ct) {
-  return +(ct / 100).toFixed(3);
-}
+const CONTRACT_ID = "DE-LDK-C43313814-L";
 
 export default function ChargingDashboard() {
   const [activePage, setActivePage] = useState("prices");
   const [hours, setHours] = useState([]);
   const [tariff, setTariff] = useState(null);
+  const [contractOffer, setContractOffer] = useState(null); // Holds dynamic contract metadata
   const [spots, setSpots] = useState(new Array(6).fill(false));
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [burgerOpen, setBurgerOpen] = useState(false);
 
   const stations = [spots.slice(0, 2), spots.slice(2, 4), spots.slice(4, 6)];
-
   const stationAssetGroups = [
     [
       { taken: takenImg, free: freeImg },
@@ -35,18 +33,27 @@ export default function ChargingDashboard() {
     ],
     [
       { taken: takenImg, free: freeImg },
-      { taken: takenImgPair, free: takenImgPair },
+      { taken: takenImgPair, free: freeImgPair },
     ],
   ];
 
   useEffect(() => {
     let mounted = true;
-    async function load() {
+    async function loadData() {
       try {
+        // Pipeline 1: Fetch Contract-Specific Offer Constraints
+        const contractRes = await fetch(
+          `${BASE_URL}/users/${CONTRACT_ID}/offers`,
+        );
+        const contractData = contractRes.ok ? await contractRes.json() : null;
+        if (mounted && contractData) setContractOffer(contractData);
+
+        // Pipeline 2: Fetch Base Tariff Meta Surcharges
         const metaRes = await fetch(`${BASE_URL}/meta`);
         const meta = metaRes.ok ? await metaRes.json() : null;
         if (mounted && meta?.tariff) setTariff(meta.tariff);
 
+        // Pipeline 3: Fetch Environmental Spot Timeseries
         const tsRes = await fetch(`${BASE_URL}/timeseries?year=2025&freq=H`);
         if (!tsRes.ok) throw new Error("Failed to load timeseries");
         const tsJson = await tsRes.json();
@@ -63,13 +70,14 @@ export default function ChargingDashboard() {
           : points.slice(-24).map((p) => ({ ...p, dt: new Date(p.ts) }));
         if (mounted) setHours(final);
       } catch (e) {
-        console.error(e);
+        console.error("Data pipeline sync error:", e);
       }
     }
-    load();
+    loadData();
     return () => (mounted = false);
   }, []);
 
+  // Live real-time occupancy simulation loop
   useEffect(() => {
     const id = setInterval(() => {
       setSpots((prev) => {
@@ -85,6 +93,7 @@ export default function ChargingDashboard() {
     return () => clearInterval(id);
   }, []);
 
+  // Compute standard baseline grid surcharges
   const surchargeCt = tariff
     ? (tariff.ne_energy_ct_kwh || 0) +
       (tariff.concession_ct_kwh || 0) +
@@ -93,35 +102,58 @@ export default function ChargingDashboard() {
       (tariff.supplier_markup_ct_kwh || 0)
     : 0;
 
-  const priceBands = hours
-    .map((h) => (h.spot_ct_kwh || 0) + surchargeCt)
-    .sort((a, b) => a - b);
-  const lowThreshold =
-    priceBands.length > 0
-      ? priceBands[Math.floor(priceBands.length * 0.33)]
-      : 0;
-  const highThreshold =
-    priceBands.length > 0
-      ? priceBands[Math.floor(priceBands.length * 0.66)]
-      : 0;
+  // =========================================================================
+  // CONTRACT TIER PRICING CALCULATOR LOGIC ENGINE
+  // =========================================================================
+  const calculateDerivedContractMetrics = (h) => {
+    const baseCostCt = (h.spot_ct_kwh || 0) + surchargeCt;
+    const currentHourNum = h.dt.getHours();
 
-  const chartData = hours.map((h) => {
-    const totalCt = (h.spot_ct_kwh || 0) + surchargeCt;
+    // Default fallback configurations if contract fetch fails mid-demo
+    const marginRate = contractOffer ? contractOffer.margin_rate : 0.35;
+    const discountCt = contractOffer ? contractOffer.discount_ct_kwh : 1.5;
+    const cheapHours = contractOffer
+      ? contractOffer.cheap_hours
+      : [11, 12, 13, 14];
+    const peakHours = contractOffer
+      ? contractOffer.expensive_hours
+      : [18, 19, 20, 21];
+
+    // Apply Margin Rule: cost * (1 + margin)
+    let finalConsumerPriceCt = baseCostCt * (1 + marginRate);
+
+    // Apply Smart Dynamic Discount Gating
+    let pricingTier = "Standard";
+    if (cheapHours.includes(currentHourNum)) {
+      finalConsumerPriceCt -= discountCt;
+      pricingTier = "⚡ ECO SAVE";
+    } else if (peakHours.includes(currentHourNum)) {
+      pricingTier = "🔥 PEAK";
+    }
+
+    const priceEur = +(finalConsumerPriceCt / 100).toFixed(4);
+    const timeString = h.dt.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
     return {
-      name: h.dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      price: formatPriceCtToEur(totalCt),
+      timeLabel: timeString,
+      priceEur: priceEur,
+      tier: pricingTier,
+    };
+  };
+
+  // Compile calculated parameters for downstream graphing layers
+  const computedTimelineData = hours.map((h) => {
+    const metrics = calculateDerivedContractMetrics(h);
+    return {
+      name: metrics.timeLabel,
+      price: metrics.priceEur,
       rawItem: {
-        time: h.dt.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        price: formatPriceCtToEur(totalCt),
-        label:
-          totalCt <= lowThreshold
-            ? "⚡ ECO SAVE"
-            : totalCt > highThreshold
-              ? "🔥 PEAK"
-              : "Standard",
+        time: metrics.timeLabel,
+        price: metrics.priceEur,
+        label: metrics.tier,
       },
     };
   });
@@ -169,6 +201,18 @@ export default function ChargingDashboard() {
               🔌 Station Occupancy
             </button>
           </li>
+          <div className="drawer-header">Account</div>
+          <li>
+            <button
+              className={`drawer-nav-btn ${activePage === "profile" ? "active" : ""}`}
+              onClick={() => {
+                setActivePage("profile");
+                setBurgerOpen(false);
+              }}
+            >
+              👤 Profile
+            </button>
+          </li>
         </ul>
         <div
           className="drawer-overlay-tap"
@@ -177,28 +221,27 @@ export default function ChargingDashboard() {
       </nav>
 
       <div className="page-content-viewport">
-        {activePage === "prices" ? (
+        {activePage === "prices" && (
           <div className="sub-page">
-            <PriceChart
-              chartData={chartData}
-              hours={hours}
-              onPointSelect={setSelectedBooking}
-            />
+            <PriceChart chartData={computedTimelineData} hours={hours} />
             <PriceList
               hours={hours}
-              surchargeCt={surchargeCt}
-              lowThreshold={lowThreshold}
-              highThreshold={highThreshold}
-              formatPriceCtToEur={formatPriceCtToEur}
+              calculateMetrics={calculateDerivedContractMetrics}
               onSelectBooking={setSelectedBooking}
             />
           </div>
-        ) : (
+        )}
+        {activePage === "bays" && (
           <div className="sub-page">
             <StationManager
               stations={stations}
               stationAssetGroups={stationAssetGroups}
             />
+          </div>
+        )}
+        {activePage === "profile" && (
+          <div className="sub-page">
+            <ProfileManager />
           </div>
         )}
       </div>
@@ -213,7 +256,7 @@ export default function ChargingDashboard() {
               <strong>{selectedBooking.time}</strong>.
             </p>
             <div className="price-estimate-box">
-              <span>Rate:</span>
+              <span>Rate ({selectedBooking.label}):</span>
               <strong>€{selectedBooking.price} / kWh</strong>
             </div>
             <div className="modal-actions">
@@ -226,7 +269,7 @@ export default function ChargingDashboard() {
               <button
                 className="btn-primary"
                 onClick={() => {
-                  alert(`Reserved!`);
+                  alert(`Reserved successfully at ${selectedBooking.time}!`);
                   setSelectedBooking(null);
                 }}
               >
