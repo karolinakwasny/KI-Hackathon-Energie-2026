@@ -1,6 +1,10 @@
 # KI-Hackathon-Energie-2026
 
-A real-time analytics dashboard for a DC fast-charging hub, built at the KI-Hackathon Juni 2026.
+Built at the KI-Hackathon Juni 2026, this project analyses the economics of a DC fast-charging hub and demonstrates how dynamic pricing and smart load management can improve profitability, grid stability and charging pace. It consists of three parts:
+
+- **Operator dashboard** (`frontend_client`) — real-time analytics showing cost, revenue, net profit, and load demand across different timeframes
+- **Driver app** (`user_app`) — a user-facing app showing personalised charging offers and price recommendations based on spot market data
+- **Backend API** (`backend`) — a FastAPI service that cleans raw Excel data, calculates costs and pricing, and serves both frontends
 
 ---
 
@@ -35,15 +39,17 @@ EnergieHackathon/
 │           ├── AnalyticsChart.jsx  # Individual metric charts
 │           └── api.js              # Fetches & transforms data from backend
 │
-└── user_app/                       # React + Vite — driver-facing app
+└── user_app/                       # React + Vite — driver-facing app (also served by backend)
     └── src/
         └── components/
-            ├── ChargingDashboard.jsx
-            ├── PriceChart.jsx
-            ├── PriceList.jsx
-            ├── ProfileManager.jsx
-            └── StationManager.jsx
+            ├── ChargingDashboard.jsx  # Main driver dashboard
+            ├── PriceChart.jsx         # Hourly price chart
+            ├── PriceList.jsx          # Price list view
+            ├── ProfileManager.jsx     # User profile management
+            └── StationManager.jsx     # Charge point status
 ```
+
+> The backend serves both the `frontend_client` and `user_app` — all API calls go through `http://localhost:8000`.
 
 **Ports:**
 - Backend API: `http://localhost:8000`
@@ -97,7 +103,6 @@ npm run dev
 
 Open `http://localhost:5173` in your browser.
 
-
 ---
 
 ## Data Sources
@@ -112,28 +117,4 @@ All raw data files are stored in `backend/data/` (read-only).
 | `Berechnugn_Netzentgelte.xlsx` | **Network fee calculation** — 2025 rates: energy charge 8.24 ct/kWh, demand charge 19.76 €/kW·a. |
 | `Preisblatt_Strom_2024_-final.pdf` | **BS Netz price sheet 2024** — reference for concession levy (0.11 ct/kWh) and metering costs. |
 
-
 ---
-
-## Calculation
-
-Sample response from `GET /users/{contract_id}/offer`:
-
-```json
-{
-  "contract_id": "DE-LDK-C43313814-L",
-  "year": 2025,
-  "cheap_hours": [13, 14, 12, 11],
-  "expensive_hours": [21, 18, 20, 19],
-  "discount_ct_kwh": 1.5,
-  "valid_date": "2025-12-26",
-  "expected_shift_kwh": 210.094,
-  "expected_saving_eur": 12.64,
-  "customer_segment": "loyal",
-  "sessions": 85,
-  "active_months": 12,
-  "sessions_per_month": 7.08,
-  "discount_share": 0.2,
-  "margin_rate": 0.35
-}
-```
