@@ -4,7 +4,7 @@ export default function ProfileManager() {
   // Static mock telemetry structured for the hackathon showcase
   const mockUser = {
     name: "Alex Fischer",
-    tier: "Premium Eco-Member",
+    tier: "Member",
     memberSince: "Aug 2025",
     vehicle: "VW ID.4 Pro",
     batteryCapacity: "77 kWh",
@@ -24,10 +24,9 @@ export default function ProfileManager() {
     <div className="profile-container">
       {/* USER HERO AVATAR BADGE */}
       <div className="profile-hero-card">
-        <div className="profile-avatar">⚡</div>
+        <div className="profile-avatar">👤</div>
         <div className="profile-meta">
           <h3>{mockUser.name}</h3>
-          <span className="profile-tier-tag">{mockUser.tier}</span>
         </div>
       </div>
 

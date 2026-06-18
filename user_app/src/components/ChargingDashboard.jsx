@@ -10,7 +10,7 @@ import takenImgPair from "../assets/car_red_mirror.png";
 import freeImgPair from "../assets/electric_car_mirror.png";
 
 const BASE_URL = "http://localhost:8000";
-const CONTRACT_ID = "DE-LDK-C43313814-L";
+const CONTRACT_ID = "DE-LDK-C43313814-N";
 
 export default function ChargingDashboard() {
   const [activePage, setActivePage] = useState("prices");
@@ -37,45 +37,70 @@ export default function ChargingDashboard() {
     ],
   ];
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadData() {
+  // src/ChargingDashboard.jsx
+
+useEffect(() => {
+  let mounted = true;
+  async function loadData() {
+    try {
+      // Pipeline 1: Fetch Contract-Specific Offer Constraints
+      const contractRes = await fetch(`${BASE_URL}/users/${CONTRACT_ID}/offers`);
+      const contractData = contractRes.ok ? await contractRes.json() : null;
+      if (mounted && contractData) setContractOffer(contractData);
+
+      // Pipeline 2: Fetch Base Tariff Meta Surcharges
+      const metaRes = await fetch(`${BASE_URL}/meta`);
+      const meta = metaRes.ok ? await metaRes.json() : null;
+      if (mounted && meta?.tariff) setTariff(meta.tariff);
+
+      // =========================================================================
+      // PIPELINE 3: SYNC CLOCK SYNC VIA SERVER EPOCH MS
+      // =========================================================================
+      let serverEpoch = Date.now();
       try {
-        // Pipeline 1: Fetch Contract-Specific Offer Constraints
-        const contractRes = await fetch(
-          `${BASE_URL}/users/${CONTRACT_ID}/offers`,
-        );
-        const contractData = contractRes.ok ? await contractRes.json() : null;
-        if (mounted && contractData) setContractOffer(contractData);
-
-        // Pipeline 2: Fetch Base Tariff Meta Surcharges
-        const metaRes = await fetch(`${BASE_URL}/meta`);
-        const meta = metaRes.ok ? await metaRes.json() : null;
-        if (mounted && meta?.tariff) setTariff(meta.tariff);
-
-        // Pipeline 3: Fetch Environmental Spot Timeseries
-        const tsRes = await fetch(`${BASE_URL}/timeseries?year=2025&freq=H`);
-        if (!tsRes.ok) throw new Error("Failed to load timeseries");
-        const tsJson = await tsRes.json();
-
-        const now = new Date();
-        const points = tsJson.points || [];
-        const next = points
-          .map((p) => ({ ...p, dt: new Date(p.ts) }))
-          .filter((p) => p.dt >= now)
-          .slice(0, 24);
-
-        const final = next.length
-          ? next
-          : points.slice(-24).map((p) => ({ ...p, dt: new Date(p.ts) }));
-        if (mounted) setHours(final);
-      } catch (e) {
-        console.error("Data pipeline sync error:", e);
+        const timeRes = await fetch(`${BASE_URL}/time/now`);
+        if (timeRes.ok) {
+          const timeJson = await timeRes.json();
+          serverEpoch = timeJson.epoch_ms; // Exact numeric reference point
+        }
+      } catch (err) {
+        console.warn("Server clock sync failed, using browser clock fallback", err);
       }
+
+      // Roll back to the top of the current hour using mathematical rounding
+      const oneHourInMs = 60 * 60 * 1000;
+      const currentServerHourStartMs = Math.floor(serverEpoch / oneHourInMs) * oneHourInMs;
+
+      // Pipeline 4: Fetch Environmental Spot Timeseries
+      const tsRes = await fetch(`${BASE_URL}/timeseries?year=2025&freq=H`);
+      if (!tsRes.ok) throw new Error("Failed to load timeseries");
+      const tsJson = await tsRes.json();
+
+      const points = tsJson.points || [];
+      const rollingWindow = points
+        .map((p) => {
+          // Parse the item timestamp into numerical milliseconds for calculation
+          const parsedMs = typeof p.ts === "number" ? p.ts : new Date(p.ts).getTime();
+          return { ...p, tsMs: parsedMs, dt: new Date(parsedMs) };
+        })
+        // Look directly at numerical values: item time >= current rounded server hour
+        .filter((p) => p.tsMs >= currentServerHourStartMs)
+        // Extract precisely the next 24 hours of data
+        .slice(0, 24);
+
+      // Safeguard fallback slice if bounds overflow data constraints
+      const final = rollingWindow.length 
+        ? rollingWindow 
+        : points.slice(-24).map((p) => ({ ...p, dt: new Date(p.ts) }));
+      
+      if (mounted) setHours(final);
+    } catch (e) {
+      console.error("Data pipeline sync error:", e);
     }
-    loadData();
-    return () => (mounted = false);
-  }, []);
+  }
+  loadData();
+  return () => (mounted = false);
+}, []);
 
   // Live real-time occupancy simulation loop
   useEffect(() => {

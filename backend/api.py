@@ -20,6 +20,7 @@ Reads data/clean/master_15min.csv + sessions.csv. Run clean_data.py first.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 import random
 
@@ -98,6 +99,18 @@ def _sessions_in_window(s: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp)
 @app.get("/health")
 def health():
     return {"status": "ok", "clean_dir": str(CLEAN), "cached": list(_cache)}
+
+
+@app.get("/time/now")
+def time_now():
+    """Return current backend server time."""
+    now_utc = datetime.now(timezone.utc)
+    now_local = now_utc.astimezone()
+    return {
+        "utc": now_utc.isoformat(),
+        "local": now_local.isoformat(),
+        "epoch_ms": int(now_utc.timestamp() * 1000),
+    }
 
 
 @app.get("/meta")

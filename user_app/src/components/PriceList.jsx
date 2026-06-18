@@ -3,12 +3,26 @@ import React from "react";
 export default function PriceList({ hours, calculateMetrics, onSelectBooking }) {
   if (hours.length === 0) return <div className="loading">Syncing spot data...</div>;
 
+  // 1. Capture the exact hour right now from the client machine
+  const now = new Date();
+  const currentHourNum = now.getHours();
+
   return (
     <div className="hours-interactive-list">
       {hours.map((h, i) => {
-        // Call the parent calculator engine to apply margins and discount shares dynamically
-        const metrics = calculateMetrics(h);
+        // 2. Dynamically calculate the precise rolling hour offset forward
+        const targetHour = (currentHourNum + i) % 24;
         
+        // Format it cleanly to look like a premium digital clock (e.g., "14:00")
+        const dynamicTimeLabel = `${String(targetHour).padStart(2, "0")}:00`;
+
+        // 3. Inject this specific chronological window into your backend metric evaluator
+        // We override the internal date parameters so the logic tier flags PEAK vs ECO correctly
+        const workingHourDate = new Date(h.dt);
+        workingHourDate.setHours(targetHour);
+        h.dt = workingHourDate;
+
+        const metrics = calculateMetrics(h);
         const isLowPrice = metrics.tier === "⚡ ECO SAVE";
         const isHighPrice = metrics.tier === "🔥 PEAK";
 
@@ -23,13 +37,14 @@ export default function PriceList({ hours, calculateMetrics, onSelectBooking }) 
             className={layoutBtnClass}
             style={{ transition: "border-color 0.4s ease" }}
             onClick={() => onSelectBooking({ 
-              time: metrics.timeLabel, 
+              time: dynamicTimeLabel, // Use our rolling string override
               price: metrics.priceEur, 
               label: metrics.tier 
             })}
           >
             <div className="btn-left">
-              <span className="time-lbl">{metrics.timeLabel}</span>
+              {/* DISPLAY THE CORRECT SHIFTED TIME STRING */}
+              <span className="time-lbl">{dynamicTimeLabel}</span>
               <span className={`price-tag-badge ${isLowPrice ? "price-tag-badge--low" : isHighPrice ? "price-tag-badge--high" : ""}`}>
                 {metrics.tier}
               </span>
