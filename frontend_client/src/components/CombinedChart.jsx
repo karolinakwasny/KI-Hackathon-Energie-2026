@@ -51,7 +51,7 @@ export default function CombinedChart({ data, timeframe }) {
             />
             
             <Tooltip formatter={(value, name) => [
-              name === 'kw' ? `${value} kW` : `$${value}`, 
+              name === 'kw' ? `${value} kW` : `€${value}`,
               name.toUpperCase()
             ]} />
             <Legend verticalAlign="top" height={36} />

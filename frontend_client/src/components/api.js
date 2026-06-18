@@ -31,15 +31,16 @@ export const fetchDashboardData = async (timeframe, selectedYear = 2025) => {
       if (!response.ok) throw new Error("Network error");
       const json = await response.json();
 
-      // Transform FastAPI keys into format expected by Recharts
       return json.hours.map((item) => {
-        const calculatedCost = item.spot_ct_kwh * 0.8; // Baseline generation estimate
+        const costCt = (staticSurcharge + item.spot_ct_kwh) * item.avg_kw;
+        const priceCt = costCt * 1.3;
+        const profitCt = priceCt - costCt;
         return {
           time: `${String(item.hour).padStart(2, "0")}:00`,
-          price: item.spot_ct_kwh,
-          cost: parseFloat(calculatedCost.toFixed(2)),
-          profit: parseFloat((item.spot_ct_kwh - calculatedCost).toFixed(2)),
-          kw: item.avg_kw,
+          price: parseFloat((priceCt / 100).toFixed(2)),
+          cost: parseFloat((costCt / 100).toFixed(2)),
+          profit: parseFloat((profitCt / 100).toFixed(2)),
+          kw: parseFloat(item.avg_kw.toFixed(2)),
         };
       });
     }
@@ -60,16 +61,16 @@ export const fetchDashboardData = async (timeframe, selectedYear = 2025) => {
           month: "short",
           day: "numeric",
         });
-        const totalCostCt = item.spot_ct_kwh + staticSurcharge;
-        const consumerPriceCt = totalCostCt * 1.3;
-        const profitCt = consumerPriceCt - totalCostCt;
+        const costCt = (staticSurcharge + item.spot_ct_kwh) * item.grid_kwh;
+        const priceCt = costCt * 1.3;
+        const profitCt = priceCt - costCt;
 
         return {
           time: cleanDate,
-          price: parseFloat((consumerPriceCt / 100).toFixed(2)),
-          cost: parseFloat((totalCostCt / 100).toFixed(2)),
+          price: parseFloat((priceCt / 100).toFixed(2)),
+          cost: parseFloat((costCt / 100).toFixed(2)),
           profit: parseFloat((profitCt / 100).toFixed(2)),
-          kw: item.peak_kw,
+          kw: parseFloat(item.sold_kwh.toFixed(2)),
         };
       });
     }
@@ -85,13 +86,15 @@ export const fetchDashboardData = async (timeframe, selectedYear = 2025) => {
         const cleanMonth = new Date(item.ts).toLocaleDateString([], {
           month: "short",
         });
-        const calculatedCost = item.spot_ct_kwh * 0.85;
+        const costCt = (staticSurcharge + item.spot_ct_kwh) * item.grid_kwh;
+        const priceCt = costCt * 1.3;
+        const profitCt = priceCt - costCt;
 
         return {
           time: cleanMonth,
-          price: item.spot_ct_kwh,
-          cost: parseFloat(calculatedCost.toFixed(2)),
-          profit: parseFloat((item.spot_ct_kwh - calculatedCost).toFixed(2)),
+          price: parseFloat((priceCt / 100).toFixed(2)),
+          cost: parseFloat((costCt / 100).toFixed(2)),
+          profit: parseFloat((profitCt / 100).toFixed(2)),
           kw: item.grid_kwh,
         };
       });

@@ -4,4 +4,5 @@ frontend_client/dist/
 .env.local
 frontend_client/.env
 frontend_client/.env.local
-.DS_Store
+.DS_Storenode_modules/
+node_modules/
