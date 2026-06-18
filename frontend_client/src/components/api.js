@@ -52,8 +52,9 @@ export const fetchDashboardData = async (
       const sourcePoints = selectedDayPoints.length ? selectedDayPoints : json.points.slice(-24);
 
       return sourcePoints.map((item) => {
+            console.log("Raw item from backend:", item); // Debug log to inspect raw data structure
         const totalCostCt = item.spot_ct_kwh + staticSurcharge;
-        const consumerPriceCt = totalCostCt * 1.3; // 30% margin rule from backend KPI target
+        const consumerPriceCt = totalCostCt * item.sold_kwh; // 30% margin rule from backend KPI target
         const profitCt = consumerPriceCt - totalCostCt;
     
         const cleanHourLabel = new Date(item.ts).toLocaleTimeString([], {
@@ -67,7 +68,7 @@ export const fetchDashboardData = async (
           price: parseFloat((consumerPriceCt / 100).toFixed(4)), // Convert cents -> EUR
           cost: parseFloat((totalCostCt / 100).toFixed(4)),
           profit: parseFloat((profitCt / 100).toFixed(4)),
-          kw: item.grid_kwh, // Fallback safety for column naming
+          kw: item.sold_kwh, // Fallback safety for column naming
         };
       });
     }
@@ -88,6 +89,7 @@ export const fetchDashboardData = async (
       );
 
       return monthPoints.map((item) => {
+        console.log("Raw item from backend:", item); // Debug log to inspect raw data structure
         const cleanDate = new Date(item.ts).toLocaleDateString([], {
           month: "short",
           day: "numeric",
@@ -101,7 +103,7 @@ export const fetchDashboardData = async (
           price: parseFloat((consumerPriceCt / 100).toFixed(2)),
           cost: parseFloat((totalCostCt / 100).toFixed(2)),
           profit: parseFloat((profitCt / 100).toFixed(2)),
-          kw: item.grid_kwh || 0, 
+          kw: item.sold_kwh || 0, 
         };
       });
     }
@@ -129,7 +131,7 @@ export const fetchDashboardData = async (
           price: parseFloat((consumerPriceCt / 100).toFixed(2)),
           cost: parseFloat((totalCostCt / 100).toFixed(2)),
           profit: parseFloat((profitCt / 100).toFixed(2)),
-          kw: item.grid_kwh || 0, 
+          kw: item.sold_kwh || 0, 
         };
       });
     }
