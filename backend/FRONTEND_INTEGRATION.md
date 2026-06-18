@@ -159,6 +159,23 @@ Important response fields:
 - `sessions_per_month`
 - `discount_share`
 - `margin_rate`
+- `pricing`
+
+The `pricing` object is calculated by the backend in `calculation.py` so the
+frontend does not need to duplicate tariff, VAT, or margin logic:
+
+```json
+{
+  "standard_price_ct_kwh": 24.97,
+  "discount_ct_kwh": 1.50,
+  "offer_price_ct_kwh": 23.47,
+  "usual_evening_price_ct_kwh": 37.05,
+  "savings_vs_evening_ct_kwh": 13.58,
+  "cheap_avg_spot_ct_kwh": 5.14,
+  "expensive_avg_spot_ct_kwh": 12.66,
+  "vat_rate": 0.19
+}
+```
 
 Segment logic:
 
@@ -213,7 +230,8 @@ const netPriceCt = baseCostCt + marginCt;
 const finalPriceCt = netPriceCt * 1.19;
 ```
 
-For the driver app, the customer sees only:
+The backend owns this formula in `calculation.py`. For the driver app, the
+customer sees only:
 
 - Standard price
 - Today's discount
