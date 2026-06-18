@@ -21,6 +21,7 @@ Reads data/clean/master_15min.csv + sessions.csv. Run clean_data.py first.
 from __future__ import annotations
 
 from pathlib import Path
+import random
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
@@ -60,6 +61,7 @@ def root():
 
 
 _cache: dict = {}
+_live_claims: set[str] = set()
 
 
 # --------------------------------------------------------------------------- #
@@ -310,6 +312,102 @@ def campaign_simulate(year: int = Query(2025), conversion: float = Query(0.5),
     return attribution.attribute(year).to_dict()
 
 
+@app.post("/campaign/live/start")
+def campaign_live_start(year: int = Query(2025), limit: int = Query(10),
+                        seed: int = Query(17)):
+    """Start a live demo campaign for `limit` randomly selected notifiable users.
+
+    Returns app links that can be opened/scanned by audience members. The dashboard
+    can poll /campaign/live to see accept/decline/pending in near real time.
+    """
+    import strategy, notify
+    offers = strategy.build_offers(year)
+    if not offers:
+        raise HTTPException(404, f"No notifiable offers for year {year}.")
+    rng = random.Random(seed)
+    selected = rng.sample(offers, k=min(limit, len(offers)))
+    records = notify.send_offers(selected, channel="live-demo")
+    _live_claims.clear()
+    return campaign_live(year=year, limit=len(records))
+
+
+@app.get("/campaign/live")
+def campaign_live(year: int = Query(2025), limit: int = Query(10)):
+    """Latest live-demo campaign status from notification/response logs."""
+    import attribution
+    notifications, responses = attribution.load_logs()
+    if notifications.empty:
+        return {"year": year, "sent": 0, "accepted": 0, "declined": 0,
+                "pending": 0, "acceptance_rate": 0.0, "participants": []}
+
+    n = notifications.copy()
+    n["year"] = pd.to_numeric(n["year"], errors="coerce")
+    n = n[(n["year"] == year) & (n["channel"] == "live-demo")]
+    if n.empty:
+        return {"year": year, "sent": 0, "accepted": 0, "declined": 0,
+                "pending": 0, "acceptance_rate": 0.0, "participants": []}
+    n = n.tail(limit).copy()
+
+    if responses.empty:
+        r = pd.DataFrame(columns=["notification_id", "accepted", "shifted_kwh"])
+    else:
+        r = responses.copy().drop_duplicates("notification_id", keep="last")
+    joined = n.merge(r[["notification_id", "accepted", "shifted_kwh"]],
+                     on="notification_id", how="left")
+    accepted = joined["accepted"].astype(str).str.lower().isin({"true", "1", "yes"})
+    responded = joined["accepted"].notna()
+    declined = responded & ~accepted
+    pending = ~responded
+
+    participants = []
+    for idx, row in joined.reset_index(drop=True).iterrows():
+        status = "pending"
+        if responded.iloc[idx]:
+            status = "accepted" if accepted.iloc[idx] else "declined"
+        link = (f"/ui/app.html?contract_id={row.contract_id}"
+                f"&notification_id={row.notification_id}&v=live")
+        participants.append({
+            "slot": int(idx + 1),
+            "contract_id": row.contract_id,
+            "notification_id": row.notification_id,
+            "discount_ct_kwh": round(float(row.discount_ct_kwh), 2),
+            "status": status,
+            "claimed": row.notification_id in _live_claims,
+            "shifted_kwh": round(float(row.shifted_kwh), 3) if pd.notna(row.shifted_kwh) else 0.0,
+            "link": link,
+        })
+
+    sent = int(len(joined))
+    accepted_n = int(accepted.sum())
+    return {
+        "year": year,
+        "sent": sent,
+        "accepted": accepted_n,
+        "declined": int(declined.sum()),
+        "pending": int(pending.sum()),
+        "acceptance_rate": round(accepted_n / sent * 100, 1) if sent else 0.0,
+        "shifted_kwh": round(float(joined.loc[accepted, "shifted_kwh"].fillna(0).sum()), 3),
+        "join_link": f"/campaign/live/claim?year={year}&limit={limit}",
+        "claimed": int(sum(1 for p in participants if p["claimed"])),
+        "participants": participants,
+    }
+
+
+@app.get("/campaign/live/claim", include_in_schema=False)
+def campaign_live_claim(year: int = Query(2025), limit: int = Query(10)):
+    """One-QR audience entrypoint: assign one unclaimed participant and redirect."""
+    live = campaign_live(year=year, limit=limit)
+    candidates = [
+        p for p in live["participants"]
+        if p["status"] == "pending" and not p["claimed"]
+    ]
+    if not candidates:
+        return RedirectResponse(f"/ui/app.html?demo_full=1&year={year}")
+    picked = random.choice(candidates)
+    _live_claims.add(picked["notification_id"])
+    return RedirectResponse(picked["link"])
+
+
 @app.get("/attribution")
 def attribution_summary(year: int = Query(2025)):
     """Campaign attribution from the existing logs (run /campaign/simulate first)."""
@@ -322,12 +420,15 @@ def attribution_summary(year: int = Query(2025)):
 def user_offer(contract_id: str, year: int = Query(2025)):
     """Personalised offer for one contract (uses the contract's own history)."""
     import strategy
-    return strategy.build_offer(contract_id, year).to_dict()
+    out = strategy.build_offer(contract_id, year).to_dict()
+    out.update(strategy.customer_segment(contract_id, year))
+    return out
 
 
 @app.post("/users/{contract_id}/response")
 def user_response(contract_id: str, notification_id: str = Query(...),
-                  accepted: bool = Query(...), shifted_kwh: float = Query(0.0)):
+                  accepted: bool = Query(...), shifted_kwh: float = Query(0.0),
+                  reason: str | None = Query(None)):
     """Log a real user response into RESPONSES_LOG (feeds the MEASURE step)."""
     import config
     from models import ResponseRecord
@@ -336,4 +437,4 @@ def user_response(contract_id: str, notification_id: str = Query(...),
                          responded_ts=_now_iso(), accepted=accepted,
                          shifted_kwh=shifted_kwh)
     _append_csv(config.RESPONSES_LOG, ResponseRecord.COLUMNS, [rec.to_dict()])
-    return {"logged": True, **rec.to_dict()}
+    return {"logged": True, "reason": reason, **rec.to_dict()}

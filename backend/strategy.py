@@ -20,6 +20,13 @@ from config import load_master, load_sessions, filter_year, DEFAULT_YEAR
 from models import Offer, PriceResponseModel, DemandModel
 
 
+SEGMENT_POLICIES = {
+    "loyal": {"min_sessions_per_month": 6.0, "discount_share": 0.20, "margin_rate": 0.35},
+    "normal": {"min_sessions_per_month": 2.0, "discount_share": 0.50, "margin_rate": 0.30},
+    "rare": {"min_sessions_per_month": 0.0, "discount_share": 0.80, "margin_rate": 0.20},
+}
+
+
 def tou_bands(year: int = DEFAULT_YEAR, n: int = 4) -> dict:
     """Cheapest vs most-expensive hours by mean spot price.
 
@@ -40,6 +47,37 @@ def tou_bands(year: int = DEFAULT_YEAR, n: int = 4) -> dict:
         "cheap_avg_ct_kwh": round(float(cheap.mean()), 2),
         "expensive_avg_ct_kwh": round(float(pricey.mean()), 2),
         "spread_ct_kwh": round(spread, 2),
+    }
+
+
+def customer_segment(contract_id: str, year: int = DEFAULT_YEAR) -> dict:
+    """Classify customer loyalty from session frequency.
+
+    Loyal customers likely charge anyway, so they get smaller steering discounts
+    and stronger margin protection. Rare customers get acquisition-oriented
+    discounts to build repeat behavior.
+    """
+    s = filter_year(load_sessions(), year)
+    s = s[s["contract_id"] == contract_id]
+    sessions = int(len(s))
+    months = int(s["start_ts"].dt.strftime("%Y-%m").nunique()) if sessions else 0
+    sessions_per_month = sessions / max(months, 1)
+
+    if sessions_per_month >= SEGMENT_POLICIES["loyal"]["min_sessions_per_month"]:
+        segment = "loyal"
+    elif sessions_per_month >= SEGMENT_POLICIES["normal"]["min_sessions_per_month"]:
+        segment = "normal"
+    else:
+        segment = "rare"
+
+    policy = SEGMENT_POLICIES[segment]
+    return {
+        "customer_segment": segment,
+        "sessions": sessions,
+        "active_months": months,
+        "sessions_per_month": round(sessions_per_month, 2),
+        "discount_share": policy["discount_share"],
+        "margin_rate": policy["margin_rate"],
     }
 
 
@@ -78,15 +116,14 @@ def build_offer(contract_id: str, year: int = DEFAULT_YEAR, n: int = 4,
     expensive_hours = bands["expensive_hours"]
     spread = bands["spread_ct_kwh"]
 
-    # The discount we offer in the cheap hours. We pass through the full band
-    # spread: the operator can give the whole price gap away and still break even
-    # on the steered energy (and keeps the demand-charge upside). The ML/ops layer
-    # can dial this down later; the price-response curve already saturates.
-    discount_ct_kwh = spread
-
     # The contract's own sessions in this year, attributed to their start hour.
     s = filter_year(load_sessions(), year)
     s = s[s["contract_id"] == contract_id]
+    segment = customer_segment(contract_id, year)
+
+    # Segment-aware offer: protect margin for loyal customers who likely charge
+    # anyway; use stronger acquisition discounts for rare/normal customers.
+    discount_ct_kwh = spread * segment["discount_share"]
 
     # Energy this contract currently charges during the expensive hours — that is
     # the pool we can steer into the cheap band.
@@ -104,9 +141,8 @@ def build_offer(contract_id: str, year: int = DEFAULT_YEAR, n: int = 4,
     p_shift = max(0.0, min(1.0, p_shift))
 
     expected_shift_kwh = expensive_kwh * p_shift
-    # Operator saving = energy moved out of the expensive band into the cheap one,
-    # valued at the per-kWh spot spread (ct -> EUR).
-    expected_saving_eur = expected_shift_kwh * spread / 100.0
+    # Net operator upside on shifted energy after funding the discount.
+    expected_saving_eur = expected_shift_kwh * max(0.0, spread - discount_ct_kwh) / 100.0
 
     # Representative date the offer applies to: the contract's last session date if
     # we have one, else today.
