@@ -22,17 +22,35 @@
   button{width:100%;padding:12px;border:0;border-radius:12px;font:inherit;font-weight:600;cursor:pointer}
   .primary{background:var(--blue);color:#fff}
   .ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  button:disabled{background:#d7dee8!important;border:1px solid #c8d0dc!important;color:#667085!important;cursor:default}
   .offer{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:14px;display:none}
   .offer.show{display:block}
   .big{font-size:28px;font-weight:800;color:var(--green)}
   .chips span{display:inline-block;background:#e6f4ec;color:var(--green);border-radius:20px;
               padding:3px 10px;font-size:13px;font-weight:600;margin:3px 3px 0 0}
+  .hour-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .hour-card{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:10px}
+  .hour-card .h{font-weight:800;color:var(--ink)}
+  .hour-card .p{font-size:13px;color:var(--green);font-weight:800;margin-top:4px}
+  .hour-card .c{font-size:11px;color:var(--muted);margin-top:2px}
   .row{display:flex;gap:10px;margin-top:14px}
+  .reason-box{display:none;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#f8fafc}
+  .reason-box.show{display:block}
+  .reason-box.live{display:block}
+  .reason-box .reason-title{font-size:13px;font-weight:700;margin-bottom:8px}
+  .reason-box button{margin-top:8px;background:#fff;border:1px solid var(--line);color:var(--ink);text-align:left}
+  .decline-details{margin-top:10px}
+  .decline-details summary{list-style:none;width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-weight:600;text-align:center;cursor:pointer}
+  .decline-details summary::-webkit-details-marker{display:none}
+  .decline-details.locked summary{background:#d7dee8;border-color:#c8d0dc;color:#667085;cursor:default}
   .muted{color:var(--muted);font-size:12px}
   .toast{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:13px;display:none}
   .toast.show{display:block}
   .ok{background:#e6f4ec;color:var(--green)} .no{background:#fbeaea;color:var(--red)}
   .ex{font-size:12px;color:var(--blue);cursor:pointer}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:12px}
+  td{padding:5px 0;border-bottom:1px solid var(--line)}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -53,13 +71,24 @@
       <div class="muted">Save by charging in the cheap window</div>
       <div class="big" id="disc"></div>
       <div class="muted">cheaper per kWh than your usual evening slot</div>
+      <div class="muted" id="validDate" style="margin-top:8px"></div>
       <div style="margin-top:12px"><div class="muted">Best hours today</div>
         <div class="chips" id="hours"></div></div>
+      <div class="hour-cards" id="hourCards"></div>
       <div class="muted" id="est" style="margin-top:12px"></div>
+      <div id="priceBreakdown"></div>
       <div class="row">
-        <button class="primary" onclick="respond(true)">Accept &amp; charge then</button>
-        <button class="ghost" onclick="respond(false)">Not today</button>
+        <button class="primary" id="acceptOfferBtn">Accept &amp; charge then</button>
       </div>
+      <details class="decline-details" id="declineDetails" open>
+        <summary>Not today</summary>
+        <div class="reason-box live" id="declineReasons">
+          <div class="reason-title">Why not today?</div>
+          <button id="reasonPriceBtn" onclick="respond(false, 'price')">Price still too high</button>
+          <button id="reasonTimeBtn" onclick="respond(false, 'time')">Yeah, no time today</button>
+          <button id="reasonOtherBtn" onclick="respond(false, 'other')">Other reason</button>
+        </div>
+      </details>
       <div class="toast" id="toast"></div>
     </div>
   </div>
@@ -68,23 +97,139 @@
 <script>
 const API = "";
 let current = null;            // {contract_id, notification_id, ...}
+const VAT_RATE = 0.19;
+const DEFAULT_MARGIN_RATE = 0.30;
+const params = new URLSearchParams(window.location.search);
 const setCid = v => { document.getElementById("cid").value = v; };
+const isLiveSession = params.get("v") === "live" || params.has("notification_id");
+if(isLiveSession){
+  const examples = document.querySelector(".ex")?.closest(".muted");
+  if(examples) examples.style.display = "none";
+  const operatorLink = document.querySelector(".top a");
+  if(operatorLink) operatorLink.style.display = "none";
+  document.getElementById("declineReasons").className = "reason-box live";
+}
+
+const moneyCt = v => `${Number(v).toFixed(2)} ct/kWh`;
+const responseKey = id => `chargesmart-response-${id}`;
+let latestPrices = null;
+
+function prettyDate(v){
+  if(!v) return "";
+  const d = new Date(`${v}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString([], {weekday:"short", month:"short", day:"numeric", year:"numeric"});
+}
+
+function responseButtons(){
+  return Array.from(document.querySelectorAll("#offer .row button, #declineReasons button"));
+}
+
+function lockResponse(choice){
+  responseButtons().forEach(btn => { btn.disabled = true; });
+  document.getElementById("declineReasons").className = "reason-box";
+  const declineDetails = document.getElementById("declineDetails");
+  declineDetails.open = false;
+  declineDetails.className = "decline-details locked";
+  const toast = document.getElementById("toast");
+  toast.className = "toast show " + (choice === "accepted" ? "ok" : "no");
+  toast.textContent = choice === "accepted"
+    ? "Booked! We'll remind you when the cheap window opens."
+    : declineMessage(choice);
+}
+
+function unlockResponse(){
+  responseButtons().forEach(btn => { btn.disabled = false; });
+  document.getElementById("declineDetails").className = "decline-details";
+  document.getElementById("declineReasons").className = isLiveSession ? "reason-box live" : "reason-box";
+}
+
+function declineMessage(choice){
+  const reason = String(choice || "").split(":")[1] || "other";
+  const labels = {
+    price: "Thanks - we'll try a better price next time.",
+    time: "Thanks - we'll look for a better time next time.",
+    other: "Thanks - noted for next time.",
+  };
+  return labels[reason] || labels.other;
+}
+
+function showDeclineReasons(){
+  if(!current) return;
+  if(localStorage.getItem(responseKey(current.notification_id))) return;
+  document.getElementById("declineDetails").open = true;
+  document.getElementById("declineReasons").className = "reason-box show";
+}
+
+function tariffAdders(t){
+  return Number(t.ne_energy_ct_kwh || 0)
+    + Number(t.concession_ct_kwh || 0)
+    + Number(t.electricity_tax_ct_kwh || 0)
+    + Number(t.surcharges_ct_kwh || 0)
+    + Number(t.supplier_markup_ct_kwh || 0);
+}
+
+function renderPriceBreakdown(meta, tou, discountCt, marginRate=DEFAULT_MARGIN_RATE){
+  const adders = tariffAdders(meta.tariff || {});
+  const spotCt = Number(tou.cheap_avg_ct_kwh || 0);
+  const usualSpotCt = Number(tou.expensive_avg_ct_kwh || spotCt);
+  const baseCostCt = spotCt + adders;
+  const marginCt = baseCostCt * marginRate;
+  const netPriceCt = baseCostCt + marginCt;
+  const vatCt = netPriceCt * VAT_RATE;
+  const finalPriceCt = netPriceCt + vatCt;
+  const offerPriceCt = Math.max(0, finalPriceCt - Number(discountCt || 0));
+  const usualBaseCt = usualSpotCt + adders;
+  const usualFinalCt = (usualBaseCt + usualBaseCt * marginRate) * (1 + VAT_RATE);
+  latestPrices = {offerPriceCt, usualFinalCt};
+  document.getElementById("priceBreakdown").innerHTML = `<table>
+    <tr><td>Standard price</td><td class="n">${moneyCt(finalPriceCt)}</td></tr>
+    <tr><td>Today&apos;s discount</td><td class="n">-${moneyCt(discountCt || 0)}</td></tr>
+    <tr><td><b>Your offer price</b></td><td class="n"><b>${moneyCt(offerPriceCt)}</b></td></tr>
+  </table>`;
+}
+
+function renderHourCards(hours, tou){
+  const offer = latestPrices?.offerPriceCt ?? 0;
+  const usual = latestPrices?.usualFinalCt ?? 0;
+  const saving = Math.max(0, usual - offer);
+  document.getElementById("hourCards").innerHTML = hours.map(h => `<div class="hour-card">
+    <div class="h">${h}:00</div>
+    <div class="p">${moneyCt(offer)}</div>
+    <div class="c">usual evening ~${moneyCt(usual)}</div>
+    <div class="c">save ~${saving.toFixed(2)} ct/kWh</div>
+  </div>`).join("");
+}
 
 async function getOffer(){
   const cid = document.getElementById("cid").value.trim();
   const offer = document.getElementById("offer");
   const toast = document.getElementById("toast"); toast.className="toast";
   try{
-    const r = await fetch(`${API}/users/${encodeURIComponent(cid)}/offer?year=2025`);
+    const [r, metaR, touR] = await Promise.all([
+      fetch(`${API}/users/${encodeURIComponent(cid)}/offer?year=2025`),
+      fetch(`${API}/meta`),
+      fetch(`${API}/strategy/tou?year=2025`)
+    ]);
     if(!r.ok) throw new Error(r.status);
+    if(!metaR.ok) throw new Error(metaR.status);
+    if(!touR.ok) throw new Error(touR.status);
     const d = await r.json();
-    current = {contract_id:d.contract_id, notification_id:"app-"+Math.random().toString(36).slice(2,10),
+    const meta = await metaR.json();
+    const tou = await touR.json();
+    unlockResponse();
+    current = {contract_id:d.contract_id,
+               notification_id:params.get("notification_id") || "app-"+Math.random().toString(36).slice(2,10),
                shifted:d.expected_shift_kwh};
     document.getElementById("disc").textContent = `${d.discount_ct_kwh} ct/kWh`;
+    document.getElementById("validDate").textContent = d.valid_date ? `Offer date: ${prettyDate(d.valid_date)}` : "";
     document.getElementById("hours").innerHTML = d.cheap_hours.map(h=>`<span>${h}:00</span>`).join("");
     document.getElementById("est").textContent =
       `If you shift, you'd move ~${Number(d.expected_shift_kwh).toFixed(0)} kWh of charging into the cheap window.`;
+    renderPriceBreakdown(meta, tou, d.discount_ct_kwh, d.margin_rate);
+    renderHourCards(d.cheap_hours, tou);
     offer.className = "offer show";
+    const saved = localStorage.getItem(responseKey(current.notification_id));
+    if(saved) lockResponse(saved);
   }catch(e){
     offer.className="offer show";
     document.getElementById("disc").textContent="—";
@@ -92,18 +237,36 @@ async function getOffer(){
   }
 }
 
-async function respond(accepted){
+async function respond(accepted, reason=""){
   if(!current) return;
+  if(localStorage.getItem(responseKey(current.notification_id))) return;
   const toast = document.getElementById("toast");
   const q = `notification_id=${current.notification_id}&accepted=${accepted}`+
-            `&shifted_kwh=${accepted?current.shifted:0}`;
+            `&shifted_kwh=${accepted?current.shifted:0}`+
+            `&reason=${encodeURIComponent(reason)}`;
   try{
     await fetch(`${API}/users/${encodeURIComponent(current.contract_id)}/response?${q}`, {method:"POST"});
+    const choice = accepted ? "accepted" : `declined:${reason || "other"}`;
+    localStorage.setItem(responseKey(current.notification_id), choice);
+    lockResponse(choice);
+    return;
     toast.className = "toast show " + (accepted?"ok":"no");
     toast.textContent = accepted
       ? "✓ Booked! We'll remind you when the cheap window opens."
       : "No problem — maybe next time.";
   }catch(e){ toast.className="toast show no"; toast.textContent="Error logging response: "+e.message; }
+}
+
+const contractFromUrl = params.get("contract_id");
+document.getElementById("acceptOfferBtn").addEventListener("click", () => respond(true));
+document.getElementById("reasonPriceBtn").addEventListener("click", () => respond(false, "price"));
+document.getElementById("reasonTimeBtn").addEventListener("click", () => respond(false, "time"));
+document.getElementById("reasonOtherBtn").addEventListener("click", () => respond(false, "other"));
+window.respond = respond;
+window.showDeclineReasons = showDeclineReasons;
+if(contractFromUrl){
+  setCid(contractFromUrl);
+  getOffer();
 }
 </script>
 </body>
