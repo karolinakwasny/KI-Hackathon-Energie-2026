@@ -10,7 +10,7 @@ import takenImgPair from "../assets/car_red_mirror.png";
 import freeImgPair from "../assets/electric_car_mirror.png";
 
 const BASE_URL = "http://localhost:8000";
-const CONTRACT_ID = "DE-LDK-C43313814-N";
+const CONTRACT_ID = "DE-LDK-C19746643-5";
 
 export default function ChargingDashboard() {
   const [activePage, setActivePage] = useState("prices");
@@ -131,32 +131,32 @@ useEffect(() => {
   // CONTRACT TIER PRICING CALCULATOR LOGIC ENGINE
   // =========================================================================
   const calculateDerivedContractMetrics = (h) => {
-    const baseCostCt = (h.spot_ct_kwh || 0) + surchargeCt;
     const currentHourNum = h.dt.getHours();
 
-    // Default fallback configurations if contract fetch fails mid-demo
-    const marginRate = contractOffer ? contractOffer.margin_rate : 0.35;
-    const discountCt = contractOffer ? contractOffer.discount_ct_kwh : 1.5;
-    const cheapHours = contractOffer
-      ? contractOffer.cheap_hours
-      : [11, 12, 13, 14];
-    const peakHours = contractOffer
-      ? contractOffer.expensive_hours
-      : [18, 19, 20, 21];
+    // 1. Establish hard fallback price defaults matching your new JSON payload structure
+    const cheapHours = contractOffer?.cheap_hours || [11, 12, 13, 14];
+    const peakHours = contractOffer?.expensive_hours || [18, 19, 20, 21];
+    
+    const pricingData = contractOffer?.pricing || {
+      standard_price_ct_kwh: 22.19,
+      offer_price_ct_kwh: 16.17,
+      usual_evening_price_ct_kwh: 32.93
+    };
 
-    // Apply Margin Rule: cost * (1 + margin)
-    let finalConsumerPriceCt = baseCostCt * (1 + marginRate);
-
-    // Apply Smart Dynamic Discount Gating
+    let finalPriceCt = pricingData.standard_price_ct_kwh ;
     let pricingTier = "Standard";
+
+    // 2. Map directly to pre-calculated backend targets depending on active hour window
     if (cheapHours.includes(currentHourNum)) {
-      finalConsumerPriceCt -= discountCt;
+      finalPriceCt = pricingData.offer_price_ct_kwh; // Pre-calculated discount rate (€0.1617)
       pricingTier = "⚡ ECO SAVE";
     } else if (peakHours.includes(currentHourNum)) {
+      finalPriceCt = pricingData.usual_evening_price_ct_kwh; // Pre-calculated evening surge rate (€0.3293)
       pricingTier = "🔥 PEAK";
     }
 
-    const priceEur = +(finalConsumerPriceCt / 100).toFixed(4);
+    // Convert total Cents directly into Euro decimal representation parameters
+    const priceEur = +(finalPriceCt / 100).toFixed(4);
     const timeString = h.dt.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
@@ -170,13 +170,23 @@ useEffect(() => {
   };
 
   // Compile calculated parameters for downstream graphing layers
-  const computedTimelineData = hours.map((h) => {
-    const metrics = calculateDerivedContractMetrics(h);
+  const computedTimelineData = hours.map((h, i) => {
+    // Determine rolling hour string to enforce time shift parity between list and graph
+    const now = new Date();
+    const targetHour = (now.getHours() + i) % 24;
+    
+    const workingHourDate = new Date(h.dt);
+    workingHourDate.setHours(targetHour);
+    
+    // Evaluate metrics using the chronologically shifted date instance
+    const metrics = calculateDerivedContractMetrics({ ...h, dt: workingHourDate });
+    const dynamicTimeLabel = `${String(targetHour).padStart(2, "0")}:00`;
+
     return {
-      name: metrics.timeLabel,
+      name: dynamicTimeLabel,
       price: metrics.priceEur,
       rawItem: {
-        time: metrics.timeLabel,
+        time: dynamicTimeLabel,
         price: metrics.priceEur,
         label: metrics.tier,
       },
