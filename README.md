@@ -46,7 +46,7 @@ EnergieHackathon/
 ```
 
 **Ports:**
-- Backend API: `http://localhost:8001`
+- Backend API: `http://localhost:8000`
 - Frontend (React): `http://localhost:5173`
 - Static driver app: `http://localhost:8000/ui/app.html`
 - API docs: `http://localhost:8000/docs`
@@ -97,3 +97,43 @@ npm run dev
 
 Open `http://localhost:5173` in your browser.
 
+
+---
+
+## Data Sources
+
+All raw data files are stored in `backend/data/` (read-only).
+
+| File | Description |
+|---|---|
+| `Lastgang_…Ladehub.xlsx` | **Load profile** — 15-min grid meter readings (kWh) for 2025 and partial 2026. This is what the hub *buys* from the grid. |
+| `Spotmarktpreis_.xlsx` | **Spot market prices** (ct/kWh) — hourly for 2024–Sep 2025, 15-min from Oct 2025 onwards. Source: netztransparenz.de. Includes negative prices. |
+| `Ladevorgänge_…Ladehub.xlsx` | **Charging sessions** — 13,155 sessions from Jul 2024 to Jun 2026 across 6 DC charge points. Contains start/end time, energy consumed (kWh), contract ID, and auth type. No selling price column. |
+| `Berechnugn_Netzentgelte.xlsx` | **Network fee calculation** — 2025 rates: energy charge 8.24 ct/kWh, demand charge 19.76 €/kW·a. |
+| `Preisblatt_Strom_2024_-final.pdf` | **BS Netz price sheet 2024** — reference for concession levy (0.11 ct/kWh) and metering costs. |
+
+
+---
+
+## Calculation
+
+Sample response from `GET /users/{contract_id}/offer`:
+
+```json
+{
+  "contract_id": "DE-LDK-C43313814-L",
+  "year": 2025,
+  "cheap_hours": [13, 14, 12, 11],
+  "expensive_hours": [21, 18, 20, 19],
+  "discount_ct_kwh": 1.5,
+  "valid_date": "2025-12-26",
+  "expected_shift_kwh": 210.094,
+  "expected_saving_eur": 12.64,
+  "customer_segment": "loyal",
+  "sessions": 85,
+  "active_months": 12,
+  "sessions_per_month": 7.08,
+  "discount_share": 0.2,
+  "margin_rate": 0.35
+}
+```
