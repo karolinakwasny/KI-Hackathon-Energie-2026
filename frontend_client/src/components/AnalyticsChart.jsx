@@ -20,7 +20,7 @@ export default function AnalyticsChart({ data, metricId, color, timeframe }) {
   // Customizing labels based on what we are looking at
   const formatYAxis = (value) => {
     if (metricId === 'kw') return `${value} kW`;
-    return `$${value}`;
+    return `€${value}`;
   };
 
   // 1. YEAR ZOOM: Use a Bar Chart (Good for monthly high-level overviews)
