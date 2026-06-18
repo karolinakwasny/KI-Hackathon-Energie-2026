@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
+// Import Recharts components to handle interactive touch/click tracking vectors
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from "recharts";
 import freeImg from "../assets/electric_car.png";
 import takenImg from "../assets/car_red.png";
 import freeImgPair from "../assets/electric_car_mirror.png";
-import takenImgPair from "../assets/car_red_mirror.png";
+import takenImgPair from "../assets/electric_car_mirror.png";
 
 const BASE_URL = "http://localhost:8000";
 
@@ -23,19 +32,19 @@ export default function ChargingDashboard() {
   const stationAssetGroups = [
     // Station 1 Layout
     [
-      { taken: takenImg, free: freeImg },         // Left Slot
-      { taken: takenImgPair, free: freeImgPair }  // Right Slot
+      { taken: takenImg, free: freeImg }, // Left Slot
+      { taken: takenImgPair, free: freeImgPair }, // Right Slot
     ],
     // Station 2 Layout
     [
-      { taken: takenImg, free: freeImg },         // Left Slot
-      { taken: takenImgPair, free: freeImgPair }  // Right Slot
+      { taken: takenImg, free: freeImg }, // Left Slot
+      { taken: takenImgPair, free: freeImgPair }, // Right Slot
     ],
     // Station 3 Layout
     [
-      { taken: takenImg, free: freeImg },         // Left Slot
-      { taken: takenImgPair, free: freeImgPair }  // Right Slot
-    ]
+      { taken: takenImg, free: freeImg }, // Left Slot
+      { taken: takenImgPair, free: takenImgPair }, // Right Slot
+    ],
   ];
 
   useEffect(() => {
@@ -104,6 +113,39 @@ export default function ChargingDashboard() {
       ? priceBands[Math.floor(priceBands.length * 0.66)]
       : 0;
 
+  // =========================================================================
+  // PREPARING CHART DATA STRIPS FOR DYNAMIC INTERACTIVE TRIGGER COUPLING
+  // =========================================================================
+  const chartData = hours.map((h) => {
+    const totalCt = (h.spot_ct_kwh || 0) + surchargeCt;
+    const isLowPrice = totalCt <= lowThreshold;
+    const isHighPrice = totalCt > highThreshold;
+    const formattedTime = h.dt.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const finalPrice = formatPriceCtToEur(totalCt);
+
+    let label = "Standard";
+    if (isLowPrice) label = "⚡ ECO SAVE";
+    if (isHighPrice) label = "🔥 PEAK";
+
+    return {
+      name: formattedTime,
+      price: finalPrice,
+      label: label,
+      rawItem: { time: formattedTime, price: finalPrice, label: label },
+    };
+  });
+
+  // Handler capturing data point mouse events inside chart layers
+  const handleChartClick = (state) => {
+    if (state && state.activePayload && state.activePayload[0]) {
+      const dataPoint = state.activePayload[0].payload.rawItem;
+      setSelectedBooking(dataPoint);
+    }
+  };
+
   return (
     <div className="mobile-shell">
       {/* HEADER NAVBAR */}
@@ -117,7 +159,7 @@ export default function ChargingDashboard() {
           <div className={`bar ${burgerOpen ? "bar--mid-open" : ""}`}></div>
           <div className={`bar ${burgerOpen ? "bar--bot-open" : ""}`}></div>
         </button>
-        <span className="navbar-brand">⚡ SMART HUB</span>
+        <span className="navbar-brand">⚡ SPOT ON</span>
         <div className="status-dot">Live</div>
       </header>
 
@@ -177,6 +219,125 @@ export default function ChargingDashboard() {
       <div className="page-content-viewport">
         {activePage === "prices" ? (
           <div className="sub-page">
+            {/* =========================================================================
+               NEW INTERACTIVE RATES TREND GRAPH CONTAINER OVERLAY BLOCK
+               ========================================================================= */}
+            {hours.length > 0 && (
+              <div className="chart-overview-panel">
+                <div className="chart-panel-header">
+                  24h Price Trend{" "}
+                  <span className="action-hint">(Tap curve to book)</span>
+                </div>
+                <div style={{ width: "100%", height: 130 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={chartData}
+                      margin={{ top: 10, right: 5, left: -25, bottom: 0 }}
+                      // Handles general background grid clicks as a fallback safety
+                      onClick={(state) => {
+                        if (
+                          state &&
+                          typeof state.activeIndex === "number" &&
+                          hours[state.activeIndex]
+                        ) {
+                          const target = hours[state.activeIndex];
+                          const totalCt =
+                            (target.spot_ct_kwh || 0) + surchargeCt;
+                          const isLowPrice = totalCt <= lowThreshold;
+                          const isHighPrice = totalCt > highThreshold;
+                          setSelectedBooking({
+                            time: target.dt.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }),
+                            price: formatPriceCtToEur(totalCt),
+                            label: isLowPrice
+                              ? "⚡ ECO SAVE"
+                              : isHighPrice
+                                ? "🔥 PEAK"
+                                : "Standard",
+                          });
+                        }
+                      }}
+                    >
+                      <defs>
+                        <linearGradient
+                          id="cyberNeonGlow"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="#38bdf8"
+                            stopOpacity={0.3}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="#38bdf8"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="name"
+                        stroke="#4b5563"
+                        fontSize={9}
+                        tickLine={false}
+                        interval={4}
+                      />
+                      <YAxis
+                        stroke="#4b5563"
+                        fontSize={9}
+                        tickLine={false}
+                        domain={["auto", "auto"]}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "#141822",
+                          borderColor: "#1f293d",
+                          borderRadius: "8px",
+                        }}
+                        labelStyle={{
+                          color: "#9ca3af",
+                          fontSize: "11px",
+                          fontWeight: "bold",
+                        }}
+                        itemStyle={{
+                          color: "#4ade80",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                        }}
+                        formatter={(value) => [`€${value}/kWh`]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="price"
+                        stroke="#38bdf8"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#cyberNeonGlow)"
+                        // ATTACHES CLICK LIFECYCLE HOOKS DIRECTLY TO MOBILE DOT TARGETS
+                        activeDot={{
+                          r: 6,
+                          stroke: "#0d0f14",
+                          strokeWidth: 2,
+                          fill: "#4ade80",
+                          onClick: (e, payload) => {
+                            if (payload && payload.payload?.rawItem) {
+                              setSelectedBooking(payload.payload.rawItem);
+                            }
+                          },
+                        }}
+                        style={{ cursor: "pointer" }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
             <div className="hours-interactive-list">
               {hours.length === 0 && <div className="loading">Syncing...</div>}
               {hours.map((h, i) => {
@@ -234,10 +395,7 @@ export default function ChargingDashboard() {
           <div className="sub-page">
             <div className="stations-vertical-stack">
               {stations.map((stationSpots, stationIndex) => {
-                // Count how many slots are true (taken) at this specific station
                 const takenCount = stationSpots.filter(Boolean).length;
-
-                // If 2 are taken -> OCCUPIED. Otherwise, at least one is free -> AVAILABLE.
                 const isOccupied = takenCount === 2;
 
                 return (

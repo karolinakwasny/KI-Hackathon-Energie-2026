@@ -211,6 +211,55 @@ body {
   color: #9ca3af;
 }
 
+.chart-preview-card {
+  background: #141822;
+  border: 1px solid #1f293d;
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.chart-title-lbl {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #38bdf8;
+  letter-spacing: 0.04em;
+  display: block;
+  padding-left: 4px;
+}
+
+/* =========================================================================
+   INTERACTIVE PRICE TREND LINE LAYOUT PANELS
+   ========================================================================= */
+.chart-overview-panel {
+  background: #141822;
+  border: 1px solid #1f293d;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.chart-panel-header {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #9ca3af;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action-hint {
+  font-size: 0.7rem;
+  color: #38bdf8;
+  text-transform: none;
+  font-weight: 500;
+}
+
 .price-lbl--neon { color: #4ade80; }
 .price-lbl--alert { color: #f87171; }
 .action-lbl { font-size: 0.7rem; color: #38bdf8; margin-top: 2px; }
