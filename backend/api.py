@@ -419,9 +419,18 @@ def attribution_summary(year: int = Query(2025)):
 @app.get("/users/{contract_id}/offer")
 def user_offer(contract_id: str, year: int = Query(2025)):
     """Personalised offer for one contract (uses the contract's own history)."""
-    import strategy
-    out = strategy.build_offer(contract_id, year).to_dict()
-    out.update(strategy.customer_segment(contract_id, year))
+    import calculation, strategy
+    offer = strategy.build_offer(contract_id, year)
+    segment = strategy.customer_segment(contract_id, year)
+    bands = strategy.tou_bands(year)
+    out = offer.to_dict()
+    out.update(segment)
+    out["pricing"] = calculation.customer_offer_prices(
+        cheap_avg_spot_ct_kwh=bands["cheap_avg_ct_kwh"],
+        expensive_avg_spot_ct_kwh=bands["expensive_avg_ct_kwh"],
+        discount_ct_kwh=offer.discount_ct_kwh,
+        margin_rate=segment["margin_rate"],
+    )
     return out
 
 

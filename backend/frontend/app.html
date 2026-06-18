@@ -97,8 +97,6 @@
 <script>
 const API = "";
 let current = null;            // {contract_id, notification_id, ...}
-const VAT_RATE = 0.19;
-const DEFAULT_MARGIN_RATE = 0.30;
 const params = new URLSearchParams(window.location.search);
 const setCid = v => { document.getElementById("cid").value = v; };
 const isLiveSession = params.get("v") === "live" || params.has("notification_id");
@@ -112,7 +110,6 @@ if(isLiveSession){
 
 const moneyCt = v => `${Number(v).toFixed(2)} ct/kWh`;
 const responseKey = id => `chargesmart-response-${id}`;
-let latestPrices = null;
 
 function prettyDate(v){
   if(!v) return "";
@@ -160,43 +157,20 @@ function showDeclineReasons(){
   document.getElementById("declineReasons").className = "reason-box show";
 }
 
-function tariffAdders(t){
-  return Number(t.ne_energy_ct_kwh || 0)
-    + Number(t.concession_ct_kwh || 0)
-    + Number(t.electricity_tax_ct_kwh || 0)
-    + Number(t.surcharges_ct_kwh || 0)
-    + Number(t.supplier_markup_ct_kwh || 0);
-}
-
-function renderPriceBreakdown(meta, tou, discountCt, marginRate=DEFAULT_MARGIN_RATE){
-  const adders = tariffAdders(meta.tariff || {});
-  const spotCt = Number(tou.cheap_avg_ct_kwh || 0);
-  const usualSpotCt = Number(tou.expensive_avg_ct_kwh || spotCt);
-  const baseCostCt = spotCt + adders;
-  const marginCt = baseCostCt * marginRate;
-  const netPriceCt = baseCostCt + marginCt;
-  const vatCt = netPriceCt * VAT_RATE;
-  const finalPriceCt = netPriceCt + vatCt;
-  const offerPriceCt = Math.max(0, finalPriceCt - Number(discountCt || 0));
-  const usualBaseCt = usualSpotCt + adders;
-  const usualFinalCt = (usualBaseCt + usualBaseCt * marginRate) * (1 + VAT_RATE);
-  latestPrices = {offerPriceCt, usualFinalCt};
+function renderPriceBreakdown(pricing){
   document.getElementById("priceBreakdown").innerHTML = `<table>
-    <tr><td>Standard price</td><td class="n">${moneyCt(finalPriceCt)}</td></tr>
-    <tr><td>Today&apos;s discount</td><td class="n">-${moneyCt(discountCt || 0)}</td></tr>
-    <tr><td><b>Your offer price</b></td><td class="n"><b>${moneyCt(offerPriceCt)}</b></td></tr>
+    <tr><td>Standard price</td><td class="n">${moneyCt(pricing.standard_price_ct_kwh)}</td></tr>
+    <tr><td>Today&apos;s discount</td><td class="n">-${moneyCt(pricing.discount_ct_kwh || 0)}</td></tr>
+    <tr><td><b>Your offer price</b></td><td class="n"><b>${moneyCt(pricing.offer_price_ct_kwh)}</b></td></tr>
   </table>`;
 }
 
-function renderHourCards(hours, tou){
-  const offer = latestPrices?.offerPriceCt ?? 0;
-  const usual = latestPrices?.usualFinalCt ?? 0;
-  const saving = Math.max(0, usual - offer);
+function renderHourCards(hours, pricing){
   document.getElementById("hourCards").innerHTML = hours.map(h => `<div class="hour-card">
     <div class="h">${h}:00</div>
-    <div class="p">${moneyCt(offer)}</div>
-    <div class="c">usual evening ~${moneyCt(usual)}</div>
-    <div class="c">save ~${saving.toFixed(2)} ct/kWh</div>
+    <div class="p">${moneyCt(pricing.offer_price_ct_kwh)}</div>
+    <div class="c">usual evening ~${moneyCt(pricing.usual_evening_price_ct_kwh)}</div>
+    <div class="c">save ~${moneyCt(pricing.savings_vs_evening_ct_kwh)}</div>
   </div>`).join("");
 }
 
@@ -205,17 +179,9 @@ async function getOffer(){
   const offer = document.getElementById("offer");
   const toast = document.getElementById("toast"); toast.className="toast";
   try{
-    const [r, metaR, touR] = await Promise.all([
-      fetch(`${API}/users/${encodeURIComponent(cid)}/offer?year=2025`),
-      fetch(`${API}/meta`),
-      fetch(`${API}/strategy/tou?year=2025`)
-    ]);
+    const r = await fetch(`${API}/users/${encodeURIComponent(cid)}/offer?year=2025`);
     if(!r.ok) throw new Error(r.status);
-    if(!metaR.ok) throw new Error(metaR.status);
-    if(!touR.ok) throw new Error(touR.status);
     const d = await r.json();
-    const meta = await metaR.json();
-    const tou = await touR.json();
     unlockResponse();
     current = {contract_id:d.contract_id,
                notification_id:params.get("notification_id") || "app-"+Math.random().toString(36).slice(2,10),
@@ -225,8 +191,8 @@ async function getOffer(){
     document.getElementById("hours").innerHTML = d.cheap_hours.map(h=>`<span>${h}:00</span>`).join("");
     document.getElementById("est").textContent =
       `If you shift, you'd move ~${Number(d.expected_shift_kwh).toFixed(0)} kWh of charging into the cheap window.`;
-    renderPriceBreakdown(meta, tou, d.discount_ct_kwh, d.margin_rate);
-    renderHourCards(d.cheap_hours, tou);
+    renderPriceBreakdown(d.pricing);
+    renderHourCards(d.cheap_hours, d.pricing);
     offer.className = "offer show";
     const saved = localStorage.getItem(responseKey(current.notification_id));
     if(saved) lockResponse(saved);
